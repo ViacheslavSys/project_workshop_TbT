@@ -1,0 +1,205 @@
+/* ==== Глобальные стили ==== */
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  color: #e0e0e0;
+  background-color: #121212;
+
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  box-sizing: border-box;
+}
+
+/* Убираем отступы и фиксируем высоту */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Основная компоновка */
+body {
+  display: flex;
+  flex-direction: row;
+  background-color: #1a1a1a;
+  overflow: hidden;
+}
+
+/* ==== Тулбар слева ==== */
+.sidebar {
+  width: 260px;
+  background-color: #181818;
+  border-right: 1px solid #2a2a2a;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  padding: 1.5rem 0;
+}
+
+.sidebar h2 {
+  color: #fff;
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar li {
+  padding: 1rem 1.5rem;
+  cursor: pointer;
+  color: #b0b0b0;
+  transition: background-color 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.sidebar li:hover {
+  background-color: #222;
+  color: #fff;
+}
+
+.sidebar li.active {
+  background-color: #2b2b2b;
+  color: #ffffff;
+  border-left: 3px solid #646cff;
+}
+
+/* ==== Область чата ==== */
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: #121212;
+  color: #fff;
+  height: 100vh;
+}
+
+/* Область сообщений */
+.chat-messages {
+  flex: 1;
+  padding: 1rem 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+/* Сообщения */
+.message {
+  max-width: 70%;
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+  line-height: 1.4;
+  font-size: 0.95rem;
+}
+
+.message.user {
+  align-self: flex-end;
+  background-color: #3a3a3a;
+  color: #ffffff;
+}
+
+.message.bot {
+  align-self: flex-start;
+  background-color: #242424;
+  color: #e0e0e0;
+}
+
+/* ==== Поле ввода ==== */
+.chat-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-top: 1px solid #2a2a2a;
+  padding: 0.75rem 1rem;
+  background-color: #181818;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background-color: #222;
+  color: #fff;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.chat-input input:focus {
+  border-color: #646cff;
+}
+
+.chat-input button {
+  border-radius: 8px;
+  border: none;
+  padding: 0.7rem 1.1rem;
+  font-size: 1rem;
+  font-weight: 500;
+  background-color: #2f2f2f;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.chat-input button:hover {
+  background-color: #3f3f3f;
+}
+
+.chat-input button:active {
+  background-color: #4a4a4a;
+}
+
+/* ==== Блок голосового ввода ==== */
+.voice-button {
+  background-color: #222;
+  border: 1px solid #333;
+  color: #ccc;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.voice-button:hover {
+  background-color: #333;
+  color: #fff;
+}
+
+/* ==== Скролл ==== */
+.chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background-color: #333;
+  border-radius: 4px;
+}
+
+/* ==== Мобильная адаптация ==== */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 70px;
+    padding: 0.5rem;
+  }
+  .sidebar li {
+    font-size: 0.75rem;
+    padding: 0.7rem;
+    text-align: center;
+  }
+}

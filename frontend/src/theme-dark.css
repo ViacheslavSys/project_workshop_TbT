@@ -1,0 +1,193 @@
+/* ==== ТЕМНАЯ ТЕМА ДЛЯ ВСЕГО ПРИЛОЖЕНИЯ ==== */
+:root {
+  /* --- Основные цвета --- */
+  --color-bg-primary: #121212;
+  --color-bg-secondary: #181818;
+  --color-bg-tertiary: #1e1e1e;
+
+  --color-surface: #222222;
+  --color-border: #2c2c2c;
+
+  --color-text-primary: #e0e0e0;
+  --color-text-secondary: #b0b0b0;
+  --color-accent: #646cff;
+  --color-accent-hover: #7a82ff;
+
+  --color-success: #2ecc71;
+  --color-warning: #f1c40f;
+  --color-error: #e74c3c;
+
+  --radius-small: 6px;
+  --radius-medium: 10px;
+  --radius-large: 16px;
+
+  --transition-fast: 0.2s ease;
+  --transition-normal: 0.3s ease;
+
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+/* ==== БАЗОВЫЙ RESET ==== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: background-color var(--transition-normal), color var(--transition-normal);
+}
+
+/* ==== ССЫЛКИ ==== */
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+a:hover {
+  color: var(--color-accent-hover);
+}
+
+/* ==== КНОПКИ ==== */
+button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+  color: var(--color-text-primary);
+  padding: 0.6em 1.2em;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+button:hover {
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-accent);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==== INPUT ==== */
+input, select, textarea {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+  padding: 0.6em 0.8em;
+  font-size: 1rem;
+  transition: border-color var(--transition-fast);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+/* ==== SCROLLBAR ==== */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+}
+
+/* ==== CHAT UI KIT OVERRIDES ==== */
+.cs-message__content {
+  background-color: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+  border-radius: var(--radius-medium) !important;
+}
+
+.cs-message--outgoing .cs-message__content {
+  background-color: #2f2f2f !important;
+}
+
+.cs-message-input__content-editor {
+  background-color: var(--color-bg-tertiary) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.cs-main-container {
+  background-color: var(--color-bg-primary) !important;
+  border: none !important;
+}
+
+/* ==== ТУЛБАР / САЙДБАР ==== */
+.sidebar {
+  background-color: var(--color-bg-secondary);
+  border-right: 1px solid var(--color-border);
+}
+
+.sidebar h2 {
+  color: var(--color-text-primary);
+}
+
+.sidebar li {
+  color: var(--color-text-secondary);
+  transition: background-color var(--transition-fast);
+}
+.sidebar li:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-tertiary);
+}
+.sidebar li.active {
+  border-left: 3px solid var(--color-accent);
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+/* ==== CHAT INPUT ==== */
+.chat-input {
+  background-color: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-border);
+}
+
+.chat-input input {
+  background-color: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+.chat-input input:focus {
+  border-color: var(--color-accent);
+}
+
+/* ==== ГОЛОСОВАЯ КНОПКА ==== */
+.voice-button {
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+.voice-button:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-accent);
+}
+
+/* ==== МЕЛОЧИ ==== */
+h1, h2, h3, h4, h5 {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+p {
+  color: var(--color-text-secondary);
+}

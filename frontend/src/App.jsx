@@ -1,12 +1,19 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
+import { Outlet, Link } from "react-router-dom";
+import './theme-dark.css';
 
-function App() {
-  return <h1>Hello from React + Vite</h1>;
+export default function App() {
+  return (
+    <div className="main_page">
+      <header>
+        <nav className="main_nav">
+          <Link to="/">Главная</Link>
+          <Link to="/chat">Помощник</Link>
+        </nav>
+      </header>
+
+      <main>
+        <Outlet /> {/* Здесь отображаются страницы */}
+      </main>
+    </div>
+  );
 }
-
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
