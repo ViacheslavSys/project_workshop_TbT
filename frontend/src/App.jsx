@@ -8,6 +8,7 @@ export default function App() {
         <nav className="main_nav">
           <Link to="/">Главная</Link>
           <Link to="/chat">Помощник</Link>
+          <Link to="/auth">Регистрация</Link>
         </nav>
       </header>
 
