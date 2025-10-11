@@ -34,7 +34,7 @@ jobs:
 
       - name: Run pytest
         run: |
-          PYTHONPATH=. pytest backend/tests --maxfail=1 --disable-warnings -q
+          PYTHONPATH=. pytest tests --maxfail=1 --disable-warnings -q
 
   frontend:
     runs-on: ubuntu-latest
