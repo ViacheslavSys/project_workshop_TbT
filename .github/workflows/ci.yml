@@ -29,8 +29,7 @@ jobs:
      
 
       - name: Lint with flake8
-        run: |
-          cd backend
+        run: |         
           flake8 .
 
       - name: Run pytest
