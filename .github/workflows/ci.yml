@@ -9,6 +9,9 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -20,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd backend
+          
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install flake8 pytest fastapi[all]    
