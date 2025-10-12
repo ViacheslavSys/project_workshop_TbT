@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 from app.schemas.risk_profile import RiskAnswer, RiskProfileResult
 
 
@@ -33,6 +33,66 @@ QUESTIONS = [
 ]
 
 
+def check_all_contradictions(answers: dict) -> List[Dict]:
+    contradictions = []
+
+    if answers.get(1) == "A" and answers.get(6) == "C":
+        contradictions.append({
+            "code": "short_vs_high_yield",
+            "question": (
+                "Вы указали короткий срок (до 3 лет) и доходность 15%+. "
+                "Что для вас важнее?"
+            ),
+            "options": [
+                "A) Сохранить срок, доходность не так важна",
+                "B) Можно продлить срок ради доходности",
+            ],
+        })
+
+    if answers.get(5) == "A" and answers.get(4) == "C":
+        contradictions.append({
+            "code": "risk_tolerance_vs_buy_dip",
+            "question": (
+                "Вы указали, что готовы к максимальной просадке только до 10%, "
+                "но при этом готовы докупать активы при падении на 20%. "
+                "Как вы поступите при просадке 15%?"
+            ),
+            "options": [
+                "A) Пересмотреть свою готовность к риску",
+                "B) Подтвердить стратегию докупки",
+            ],
+        })
+
+    if answers.get(7) == "A" and answers.get(8) == "C":
+        contradictions.append({
+            "code": "no_experience_vs_complex_tools",
+            "question": (
+                "Вы отметили, что у вас нет опыта инвестирования, "
+                "но при этом разбираетесь в сложных инструментах. "
+                "Хотите уточнить ваш опыт?"
+            ),
+            "options": [
+                "A) У меня теоретические знания, нужна практика",
+                "B) У меня есть практический опыт",
+            ],
+        })
+
+    if answers.get(2) == "A" and answers.get(3) == "C":
+        contradictions.append({
+            "code": "preservation_vs_high_investment",
+            "question": (
+                "Ваша цель - сохранение капитала, но вы готовы инвестировать "
+                "более 50% средств. Что для вас приоритетнее?"
+            ),
+            "options": [
+                "A) Сохранение капитала, уменьшу долю инвестиций", 
+                "B) Защита от инфляции, готов к значительным вложениям",
+            ],
+        })
+
+    return contradictions
+
+
 def determine_profile_v2(conservative, moderate, aggressive, answers_map) -> str:
     conservative, moderate, aggressive = apply_restrictions(
         conservative, moderate, aggressive, answers_map
@@ -61,11 +121,47 @@ def apply_restrictions(conservative, moderate, aggressive, answers_map):
     return conservative, moderate, aggressive
 
 
+def calculate_profile_v2_with_clarifications(
+    answers: List[RiskAnswer],
+    clarification_answers: List[Dict[str, str]]
+) -> RiskProfileResult:
+    """Расчет профиля с учетом ВСЕХ уточняющих ответов"""
+    answers_map = {a.question_id: a.answer.strip()[0].upper() for a in answers}
+
+    # Применяем ВСЕ уточняющие ответы
+    for clarification in clarification_answers:
+        code = clarification["code"]
+        answer = clarification["answer"]
+        
+        if code == "short_vs_high_yield":
+            if answer == "A":
+                answers_map[6] = "A"  # снижаем доходность
+            elif answer == "B":
+                answers_map[1] = "C"  # увеличиваем срок
+
+        elif code == "risk_tolerance_vs_buy_dip":
+            if answer == "A":
+                answers_map[4] = "B"  # меняем стратегию
+            elif answer == "B":
+                answers_map[5] = "B"  # повышаем терпимость
+
+        elif code == "no_experience_vs_complex_tools":
+            if answer == "A":
+                answers_map[8] = "A"  # упрощаем инструменты
+
+        elif code == "preservation_vs_high_investment":
+            if answer == "A":
+                answers_map[3] = "A"  # уменьшаем долю
+
+    # Используем существующую функцию расчета
+    return calculate_profile_v2([RiskAnswer(question_id=k, answer=v) for k, v in answers_map.items()])
+
+
 def calculate_profile_v2(
     answers: List[RiskAnswer],
 ) -> RiskProfileResult:
     answers_map = {a.question_id: a.answer.strip()[0].upper() for a in answers}
-    
+
     conservative = moderate = aggressive = 0
     scoring = {
         1: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
@@ -100,4 +196,3 @@ def calculate_profile_v2(
         moderate_score=moderate,
         aggressive_score=aggressive,
     )
- 

@@ -19,3 +19,14 @@ class RiskProfileResult(BaseModel):
     conservative_score: int
     moderate_score: int
     aggressive_score: int
+
+
+class ClarificationAnswer(BaseModel):
+    code: str
+    answer: str
+
+
+class ClarificationQuestion(BaseModel):
+    code: str
+    question: str
+    options: List[str]
