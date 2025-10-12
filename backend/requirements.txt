@@ -7,3 +7,6 @@ alembic
 psycopg2-binary
 email-validator
 passlib[bcrypt]
+openai
+python-multipart
+redis>=5.0.0
