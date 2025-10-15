@@ -4,6 +4,7 @@ import { Provider } from "react-redux";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import store from "./store/store.ts";
 import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
+import "./styles/tokens.css";
 import "./index.css";
 import App from "./App";
 import AuthPage from "./pages/AuthPage.tsx";
