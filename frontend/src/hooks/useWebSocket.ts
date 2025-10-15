@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useDispatch } from "react-redux";
-import { pushMessage, setTyping } from "../store/chatSlice";
+import { pushMessage, setTyping, setStage } from "../store/chatSlice";
 
 export const useWebSocket = (url: string) => {
   const ws = useRef<WebSocket | null>(null);
@@ -12,9 +12,25 @@ export const useWebSocket = (url: string) => {
     ws.current.onclose = () => {};
     ws.current.onerror = () => {};
     ws.current.onmessage = (e) => {
-      const message = JSON.parse(e.data);
-      dispatch(pushMessage({ id: crypto.randomUUID(), type: message.type, content: message.content, sender: "ai", ts: Date.now() }));
-      dispatch(setTyping(false));
+      try {
+        const m = JSON.parse(e.data);
+        const msg = {
+          id: m.id || crypto.randomUUID(),
+          type: m.type,
+          content: m.content,
+          sender: (m.sender === "user" || m.sender === "ai") ? m.sender : "ai",
+          ts: typeof m.timestamp === "number" ? m.timestamp : Date.now(),
+        };
+        // Stage switching aligned with test API
+        if (msg.type === "risk_questions") dispatch(setStage("risk"));
+        if (msg.type === "risk_result" || msg.type === "portfolio_recommendation") dispatch(setStage("portfolio"));
+        if (msg.type === "goal_discussion" || msg.type === "message") dispatch(setStage("goals"));
+        dispatch(pushMessage(msg));
+      } catch {
+        // ignore parse errors
+      } finally {
+        dispatch(setTyping(false));
+      }
     };
     return () => ws.current?.close();
   }, [url, dispatch]);

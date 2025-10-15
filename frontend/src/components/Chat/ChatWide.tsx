@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { type RootState } from "../../store/store";
 import { useWebSocket } from "../../hooks/useWebSocket";
+import { setMessages } from "../../store/chatSlice";
 
 function classNames(...cls: Array<string | false | null | undefined>) {
   return cls.filter(Boolean).join(" ");
@@ -10,9 +11,11 @@ function classNames(...cls: Array<string | false | null | undefined>) {
 const WS_URL = (import.meta as any).env?.VITE_WS_URL || "ws://localhost:8000/ws"; // set VITE_WS_URL in .env
 
 export default function ChatWide() {
-  const { messages, typing } = useSelector((s: RootState) => ({
+  const dispatch = useDispatch();
+  const { messages, typing, stage } = useSelector((s: RootState) => ({
     messages: s.chat.messages,
     typing: s.chat.typing,
+    stage: s.chat.stage,
   }));
 
   const { sendMessage } = useWebSocket(WS_URL);
@@ -22,11 +25,32 @@ export default function ChatWide() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [messages, typing]);
+
+  // Rehydrate history from sessionStorage once
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    try {
+      const raw = sessionStorage.getItem("chat_history");
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          dispatch(setMessages(arr));
+        }
+      }
+    } catch {}
+  }, [dispatch]);
+
+  // Persist history on change
+  useEffect(() => {
+    try { sessionStorage.setItem("chat_history", JSON.stringify(messages)); } catch {}
+  }, [messages]);
 
   const handleSend = () => {
     const text = draft.trim();
@@ -51,26 +75,31 @@ export default function ChatWide() {
     setIsRecording(true);
   };
 
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-  };
+  const stopRecording = () => { mediaRecorderRef.current?.stop(); };
 
   return (
     <div className="card">
       <div className="card-header flex items-center justify-between">
         <div>Chat Assistant</div>
-        {typing && <div className="text-xs text-muted">Assistant is typing…</div>}
+        {typing && <div className="text-xs text-muted">Assistant is typing...</div>}
       </div>
       <div className="card-body">
         <div className="flex flex-col h-[70vh]">
           <div ref={listRef} className="flex-1 overflow-y-auto pr-1">
             <div className="flex flex-col gap-2">
               {messages.map((m) => (
-                <MessageBubble key={m.id} sender={m.sender} type={m.type} content={m.content} />
+                <MessageBubble
+                  key={m.id}
+                  sender={m.sender}
+                  type={m.type}
+                  content={m.content}
+                  onRiskAnswer={(qid, answers)=>sendMessage({ questionId: qid, answers }, "risk_answer")}
+                />
               ))}
             </div>
           </div>
 
+          {stage !== "risk" && (
           <div className="mt-3 flex items-end gap-2">
             <button
               aria-label={isRecording ? "Stop recording" : "Start recording"}
@@ -84,7 +113,7 @@ export default function ChatWide() {
             </button>
 
             <textarea
-              placeholder="Type your message…"
+              placeholder="Type your message..."
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -99,16 +128,19 @@ export default function ChatWide() {
 
             <button onClick={handleSend} className="btn">Send</button>
           </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function MessageBubble({ sender, type, content }: { sender: "user" | "ai"; type: string; content: unknown }) {
+function MessageBubble({ sender, type, content, onRiskAnswer }: { sender: "user" | "ai"; type: string; content: unknown; onRiskAnswer?: (qid:string, answers:string[])=>void }) {
   const isUser = sender === "user";
   let body: React.ReactNode;
-  if (type === "audio" && content && typeof content === "object" && (content as any).data) {
+  if (type === "risk_questions" && content && typeof content === "object") {
+    body = <RiskFormMessage payload={content as any} onSubmit={onRiskAnswer}/>;
+  } else if (type === "audio" && content && typeof content === "object" && (content as any).data) {
     const c = content as { data: string; mime?: string };
     const src = `data:${c.mime || "audio/webm"};base64,${c.data}`;
     body = <audio controls src={src} className="max-w-full" />;
@@ -117,7 +149,7 @@ function MessageBubble({ sender, type, content }: { sender: "user" | "ai"; type:
     body = <div className="whitespace-pre-wrap break-words">{text}</div>;
   }
   return (
-    <div className={classNames("flex", isUser ? "justify-end" : "justify-start")}> 
+    <div className={classNames("flex", isUser ? "justify-end" : "justify-start")}>
       <div
         className={classNames(
           "max-w-[80%] px-3 py-2 rounded-xl border",
@@ -125,6 +157,34 @@ function MessageBubble({ sender, type, content }: { sender: "user" | "ai"; type:
         )}
       >
         {body}
+      </div>
+    </div>
+  );
+}
+
+function RiskFormMessage({ payload, onSubmit }:{ payload: any; onSubmit?: (qid: string, answers: string[])=>void }){
+  const q = Array.isArray(payload?.questions) && payload.questions.length ? payload.questions[0] : undefined;
+  const [checked, setChecked] = useState<string[]>([]);
+  if (!q) return <div className="text-sm text-muted">No questions available.</div>;
+  const toggle = (id:string) => {
+    setChecked(prev => {
+      if (q.multiSelect) return prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id];
+      return prev.includes(id) ? [] : [id];
+    });
+  };
+  return (
+    <div>
+      <div className="font-medium mb-2">{q.question || "Select options"}</div>
+      <div className="space-y-2">
+        {q.options?.map((opt:any)=> (
+          <label key={opt.id} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" className="accent-blue-500" checked={checked.includes(opt.id)} onChange={()=>toggle(opt.id)} />
+            <span>{opt.text}</span>
+          </label>
+        ))}
+      </div>
+      <div className="mt-3">
+        <button className="btn" onClick={()=> onSubmit?.(q.id, checked)} disabled={!checked.length}>Submit</button>
       </div>
     </div>
   );
@@ -142,3 +202,4 @@ function blobToBase64(blob: Blob): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
+
