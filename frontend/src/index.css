@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+:root {
+  --color-background: #0a0e1a;
+  --color-surface: #1a1f2e;
+  --color-text: #f1f5f9;
+  --color-primary: #2563eb;
+  --color-success: #059669;
+  --color-error: #dc2626;
+}
+html, body, #root { height: 100%; }
+body { background: var(--color-background); color: var(--color-text); }
