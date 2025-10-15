@@ -1,15 +1,11 @@
-/** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   darkMode: 'class',
   content: [
-    "./index.html",
-    "./src/**/*.{ts,tsx}",
-    "./node_modules/@chatscope/chat-ui-kit-react/dist/**/*.js"
+    './index.html',
+    './src/**/*.{ts,tsx,js,jsx}',
   ],
   theme: {
     extend: {
-      borderRadius: { '2xl': 'var(--radius)' },
-      boxShadow: { card: 'var(--shadow)' },
       colors: {
         bg: 'var(--bg)',
         surface: 'var(--surface)',
@@ -19,13 +15,17 @@ export default {
         primary: 'var(--primary)',
         success: 'var(--success)',
         danger: 'var(--danger)',
-        border: 'var(--border)',
-        ringc: 'var(--ring)',
+        border: 'var(--border)'
+      },
+      boxShadow: {
+        card: 'var(--shadow)'
+      },
+      borderRadius: {
+        '2xl': 'var(--radius)'
       }
     }
   },
   plugins: [
-    // focus ring по умолчанию
     function ({ addBase }) {
       addBase({
         ':root': {'--tw-ring-color': 'var(--ring)'},
@@ -33,4 +33,4 @@ export default {
       })
     }
   ]
-}
+};

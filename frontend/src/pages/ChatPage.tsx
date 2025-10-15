@@ -1,2 +1,2 @@
-import InvestmentChat from "../components/Chat/InvestmentChat";
-export default function ChatPage(){ return <InvestmentChat/> }
+import ChatWide from "../components/Chat/ChatWide";
+export default function ChatPage(){ return <ChatWide/> }

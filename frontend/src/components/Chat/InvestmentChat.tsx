@@ -1,38 +1,27 @@
-import { MainContainer, ChatContainer, MessageList, Message, MessageInput, TypingIndicator } from "@chatscope/chat-ui-kit-react";
-import { useSelector } from "react-redux";
-import { type RootState } from "../../store/store";
-import { useWebSocket } from "../../hooks/useWebSocket";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import Chatbot from "react-chatbot-kit";
+import config from "../ChatBotKit/config";
+import MessageParser from "../ChatBotKit/MessageParser";
+import ActionProvider from "../ChatBotKit/ActionProvider";
 
 export default function InvestmentChat() {
-  const { messages, typing } = useSelector((s:RootState)=>({ messages: s.chat.messages, typing: s.chat.typing }));
-  const { sendMessage } = useWebSocket("wss://api.example.com/chat"); // заменить на ваш ws
   return (
     <div className="card">
-      <div className="card-header">ИИ-помощник</div>
+      <div className="card-header">Chat Assistant</div>
       <div className="card-body">
-        <div className="h-[65vh]">
-          <MainContainer>
-            <ChatContainer>
-              <MessageList typingIndicator={typing ? <TypingIndicator content="ИИ печатает…" /> : undefined}>
-                {messages.map(m => (
-                  <Message key={m.id} model={{
-                    message: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-                    direction: m.sender === "ai" ? "incoming" : "outgoing",
-                    sender: m.sender === "ai" ? "AI" : "Вы",
-                    position: "single"
-                  }}/>
-                ))}
-              </MessageList>
-              <MessageInput
-                placeholder="Опишите вашу финансовую цель…"
-                onSend={(text)=>sendMessage(text, "goal_discussion")}
-                attachButton={false}
-                className="!bg-black/20 !border !border-border !rounded-xl"
-              />
-            </ChatContainer>
-          </MainContainer>
+        <div className="h-[70vh]">
+          <Chatbot
+            config={config as any}
+            messageParser={MessageParser as any}
+            actionProvider={ActionProvider as any}
+            placeholderText="Type your message..."
+          />
         </div>
       </div>
     </div>
   );
 }
+
+
+

@@ -3,19 +3,19 @@ import ReactDOM from "react-dom/client";
 import { Provider } from "react-redux";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import store from "./store/store.ts";
-import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
-import "./styles/tokens.css";
 import "./index.css";
 import App from "./App";
 import AuthPage from "./pages/AuthPage.tsx";
 import ChatPage from "./pages/ChatPage.tsx";
 import PortfolioPage from "./pages/PortfolioPage.tsx";
+import PortfolioDetailPage from "./pages/PortfolioDetailPage.tsx";
 
 const router = createBrowserRouter([
   { path: "/", element: <App /> , children: [
     { index: true, element: <AuthPage/> },
     { path: "chat", element: <ChatPage/> },
     { path: "portfolios", element: <PortfolioPage/> },
+    { path: "portfolios/:id", element: <PortfolioDetailPage/> },
   ]},
 ]);
 
@@ -26,3 +26,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </Provider>
   </React.StrictMode>
 );
+
+
+
