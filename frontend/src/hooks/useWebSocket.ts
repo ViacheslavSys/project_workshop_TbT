@@ -35,10 +35,12 @@ export const useWebSocket = (url: string) => {
     return () => ws.current?.close();
   }, [url, dispatch]);
 
-  const sendMessage = (content:unknown, type="message") => {
+  const sendMessage = (content: unknown, type = "message", opts?: { echo?: boolean }) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type, content, timestamp: Date.now() }));
-      dispatch(pushMessage({ id: crypto.randomUUID(), type, content, sender:"user", ts: Date.now() }));
+      if (opts?.echo !== false) {
+        dispatch(pushMessage({ id: crypto.randomUUID(), type, content, sender: "user", ts: Date.now() }));
+      }
       dispatch(setTyping(true));
     }
   };
