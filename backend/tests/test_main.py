@@ -1,7 +1,15 @@
-from fastapi.testclient import TestClient
+import os
+from unittest.mock import MagicMock, patch
 
-from app.api.routes_health import get_db
-from app.main import app
+with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
+    with patch('app.services.llm_service.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+
+        from fastapi.testclient import TestClient
+
+        from app.api.routes_health import get_db
+        from app.main import app
 
 
 def override_get_db():
