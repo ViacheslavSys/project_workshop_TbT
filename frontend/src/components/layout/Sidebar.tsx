@@ -26,7 +26,6 @@ export default function Sidebar({ onNavigate }: Props) {
                ${isActive ? 'bg-white/10 text-text' : 'hover:bg-white/5 text-muted'}`
             }
           >
-            <span className="text-base">{item.icon}</span>
             <span>{item.label}</span>
           </NavLink>
         ))}
