@@ -9,8 +9,8 @@ import torch
 class WhisperProcessor:
     """Упрощенный класс для обработки аудио файлов с помощью Whisper"""
 
-    def __init__(self, model_type: str = "base"):
-        self.model_type = model_type
+    def __init__(self):
+        self.model_type = "turbo"
         self.model = None
         self.device = self._get_best_device()
 
@@ -40,8 +40,12 @@ class WhisperProcessor:
 
         Returns:
             Dict с результатом транскрипции
-        """
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio_file.filename)[1]) as tmp_file:
+        """ 
+
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=os.path.splitext(audio_file.filename)[1]
+        ) as tmp_file:
             try:
                 content = await audio_file.read()
                 tmp_file.write(content)
@@ -57,15 +61,16 @@ class WhisperProcessor:
                 )
 
                 return {
-                    "text": result["text"].strip(),
-                    "language": result.get("language", "ru"),
-                    "model_used": self.model_type,
+                    "text": result["text"].strip(),                    
                     "device_used": self.device,
                     "filename": audio_file.filename
                 }
 
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Ошибка транскрипции: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Ошибка транскрипции: {str(e)}"
+                )
             finally:
                 if os.path.exists(tmp_file_path):
                     os.unlink(tmp_file_path)

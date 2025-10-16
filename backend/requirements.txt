@@ -1,4 +1,3 @@
-# Основное приложение
 fastapi
 uvicorn
 sqlalchemy
@@ -6,11 +5,9 @@ alembic
 psycopg2-binary
 python-multipart
 
-# Тестирование (можно убрать для продакшена)
 pytest
 httpx
 
-# Аутентификация
 email-validator
 passlib[bcrypt]
 
@@ -20,7 +17,6 @@ torch==2.8.0
 torchaudio==2.8.0
 numpy==2.2.6  
 
-# Вспомогательные (оставить)
 Jinja2==3.1.6
 MarkupSafe==3.0.2
 regex==2025.9.1
@@ -28,3 +24,6 @@ requests==2.32.5
 tqdm==4.67.1
 urllib3==2.5.0
 idna==3.10
+python-dotenv
+openai
+pydantic
