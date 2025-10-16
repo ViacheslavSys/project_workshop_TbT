@@ -1,9 +1,11 @@
 import os
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from typing import Optional
-from app.services.whisper_processor import whisper_processor
-from app.services.llm_service import send_to_llm
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+
 from app.schemas.chat import ChatResponse
+from app.services.llm_service import send_to_llm
+from app.services.whisper_processor import whisper_processor
 
 router = APIRouter(prefix="/dialog", tags=["dialog"])
 
@@ -14,7 +16,7 @@ async def dialog_chat(
     message: Optional[str] = Form(None, description="Текстовое сообщение пользователя"),
     audio_file: Optional[UploadFile] = File(
         None, description="Аудио сообщение пользователя"
-    )    
+    ),
 ):
     """
     Универсальный endpoint для диалога:
@@ -29,8 +31,8 @@ async def dialog_chat(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Неподдерживаемый формат файла. "
-                    f"Разрешены: {', '.join(allowed_extensions)}"
-                )          
+                    f"Разрешены: {', '.join(allowed_extensions)}",
+                )
 
             result = await whisper_processor.transcribe_audio_file(audio_file)
             user_message = result["text"].strip()

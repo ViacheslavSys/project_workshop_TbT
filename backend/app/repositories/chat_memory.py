@@ -1,4 +1,5 @@
 from collections import defaultdict
+
 from app.schemas.chat import Message
 
 user_conversations = defaultdict(list)

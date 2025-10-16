@@ -1,9 +1,10 @@
 import os
 import tempfile
-from typing import Dict, Any
-from fastapi import UploadFile, HTTPException
-import whisper
+from typing import Any, Dict
+
 import torch
+import whisper
+from fastapi import HTTPException, UploadFile
 
 
 class WhisperProcessor:
@@ -18,8 +19,7 @@ class WhisperProcessor:
         """Определяет лучшее доступное устройство"""
         if torch.cuda.is_available():
             try:
-                test_tensor = torch.tensor([1.0]).cuda()
-                del test_tensor
+                torch.tensor([1.0]).cuda()
                 torch.cuda.empty_cache()
                 return "cuda"
             except RuntimeError:
@@ -40,11 +40,10 @@ class WhisperProcessor:
 
         Returns:
             Dict с результатом транскрипции
-        """ 
+        """
 
         with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=os.path.splitext(audio_file.filename)[1]
+            delete=False, suffix=os.path.splitext(audio_file.filename)[1]
         ) as tmp_file:
             try:
                 content = await audio_file.read()
@@ -57,19 +56,18 @@ class WhisperProcessor:
                     tmp_file_path,
                     verbose=False,
                     fp16=(self.device == "cuda"),
-                    language="ru"
+                    language="ru",
                 )
 
                 return {
-                    "text": result["text"].strip(),                    
+                    "text": result["text"].strip(),
                     "device_used": self.device,
-                    "filename": audio_file.filename
+                    "filename": audio_file.filename,
                 }
 
             except Exception as e:
                 raise HTTPException(
-                    status_code=500,
-                    detail=f"Ошибка транскрипции: {str(e)}"
+                    status_code=500, detail=f"Ошибка транскрипции: {str(e)}"
                 )
             finally:
                 if os.path.exists(tmp_file_path):
