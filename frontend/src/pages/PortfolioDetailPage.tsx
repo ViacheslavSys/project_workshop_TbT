@@ -26,41 +26,41 @@ export default function PortfolioDetailPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{portfolio.name}</h1>
-          <p className="text-muted text-sm">Risk: {portfolio.riskLevel}</p>
+          <p className="text-muted text-sm">Риск: {portfolio.riskLevel}</p>
         </div>
-        <Link to="/portfolios" className="tab">← Back</Link>
+        <Link to="/portfolios" className="tab">← Назад</Link>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="card">
           <div className="card-body">
-            <div className="text-xs text-muted">Total value</div>
+            <div className="text-xs text-muted">Общая стоимость</div>
             <div className="text-2xl font-bold">${portfolio.totalValue.toLocaleString()}</div>
           </div>
         </div>
         <div className="card">
           <div className="card-body">
-            <div className="text-xs text-muted">Expected return</div>
+            <div className="text-xs text-muted">Ожидаемая доходность</div>
             <div className="text-2xl font-bold">{(portfolio.expectedReturn*100).toFixed(1)}%</div>
           </div>
         </div>
         <div className="card">
           <div className="card-body">
-            <div className="text-xs text-muted">Sharpe / Vol / MaxDD</div>
+            <div className="text-xs text-muted">Шарп / Волатильность / Макс. просадка</div>
             <div className="text-2xl font-bold">{portfolio.metrics.sharpeRatio.toFixed(2)} / {(portfolio.metrics.volatility*100).toFixed(1)}% / {(portfolio.metrics.maxDrawdown*100).toFixed(1)}%</div>
           </div>
         </div>
       </div>
 
       <div className="card">
-        <div className="card-header">Performance</div>
+        <div className="card-header">Производительность</div>
         <div className="card-body">
           <LineChart data={portfolio.sparkline} />
         </div>
       </div>
 
       <div className="card">
-        <div className="card-header">Allocation</div>
+        <div className="card-header">Распределение активов</div>
         <div className="card-body grid md:grid-cols-2 gap-4">
           <div className="space-y-3">
             {portfolio.assets.map(a => (
@@ -76,11 +76,10 @@ export default function PortfolioDetailPage() {
             ))}
           </div>
           <div className="text-sm text-muted">
-            <p>Expected return numbers are illustrative. Adjust weights to balance risk and reward.</p>
+            <p>Цифры ожидаемой доходности являются иллюстративными. Настройте веса для баланса риска и доходности.</p>
           </div>
         </div>
       </div>
     </div>
   );
 }
-

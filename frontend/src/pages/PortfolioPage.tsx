@@ -23,9 +23,9 @@ export default function PortfolioPage(){
             <div className="flex justify-between items-start mb-3">
               <div>
                 <h3 className="text-lg font-semibold">{p.name}</h3>
-                <p className="text-xs text-muted mt-0.5">Risk: {p.riskLevel}</p>
+                <p className="text-xs text-muted mt-0.5">Риск: {p.riskLevel}</p>
               </div>
-              <span className="text-xs px-2 py-1 rounded-lg bg-white/5 border border-border">Active</span>
+              <span className="text-xs px-2 py-1 rounded-lg bg-white/5 border border-border">Активен</span>
             </div>
 
             <div className="flex items-end justify-between">
@@ -38,13 +38,13 @@ export default function PortfolioPage(){
 
             <div className="mt-4">
               <div className="flex justify-between text-xs text-muted mb-1">
-                <span>Top asset</span>
+                <span>Топ-актив</span>
                 <span>{Math.max(...p.assets.map(a=>a.allocation))*100}%</span>
               </div>
               <div className="w-full h-2 bg-white/10 rounded overflow-hidden">
                 <div className="h-2 bg-primary rounded" style={{width:`${Math.max(...p.assets.map(a=>a.allocation))*100}%`}}/>
               </div>
-              <div className="text-xs text-muted mt-1">Sharpe: {p.metrics.sharpeRatio.toFixed(2)}</div>
+              <div className="text-xs text-muted mt-1">Шарп: {p.metrics.sharpeRatio.toFixed(2)}</div>
             </div>
           </div>
         </Link>
