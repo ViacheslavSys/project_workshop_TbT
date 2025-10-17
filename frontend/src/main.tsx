@@ -12,7 +12,8 @@ import PortfolioDetailPage from "./pages/PortfolioDetailPage.tsx";
 
 const router = createBrowserRouter([
   { path: "/", element: <App /> , children: [
-    { index: true, path: "auth", element: <AuthPage/> },
+    { index: true, element: <AuthPage/> },
+    { path: "auth", element: <AuthPage/> },
     { path: "chat", element: <ChatPage/> },
     { path: "portfolios", element: <PortfolioPage/> },
     { path: "portfolios/:id", element: <PortfolioDetailPage/> },

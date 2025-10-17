@@ -1,21 +1,39 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
-import { login } from "../store/authSlice";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { login as loginAction } from "../store/authSlice";
 import { z } from "zod";
+import { initFakeUsers, login as fakeLogin, register as fakeRegister } from "../lib/fakeAuth";
 
-const loginSchema = z.object({ email: z.string().email(), password: z.string().min(6) });
+const schema = z.object({ email: z.string().email(), password: z.string().min(3) });
 
 export default function AuthPage() {
   const [mode, setMode] = useState<"login"|"register">("login");
   const [form, setForm] = useState({ name:"", email:"", password:"" });
   const [error, setError] = useState<string|undefined>();
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const [sp] = useSearchParams();
+
+  useEffect(() => {
+    initFakeUsers();
+    const m = sp.get("mode");
+    if (m === "register") setMode("register");
+  }, [sp]);
 
   const submit = () => {
     setError(undefined);
-    const valid = loginSchema.safeParse({ email: form.email, password: form.password });
-    if (!valid.success) return setError("Введите корректный email и пароль (мин. 6 символов)");
-    dispatch(login({ id: crypto.randomUUID(), name: form.name || "Гость", email: form.email }));
+    const valid = schema.safeParse({ email: form.email, password: form.password });
+    if (!valid.success) return setError("Введите корректный email и пароль (минимум 3 символа)");
+    try {
+      const user = mode === "login"
+        ? fakeLogin(form.email.trim(), form.password)
+        : fakeRegister(form.name.trim() || form.email.split("@")[0], form.email.trim(), form.password);
+      dispatch(loginAction({ id: user.id, name: user.name, email: user.email }));
+      navigate("/chat");
+    } catch (e:any) {
+      setError(e?.message || "Ошибка авторизации");
+    }
   };
 
   return (
@@ -24,12 +42,12 @@ export default function AuthPage() {
         <div className="card-header text-center">Вход в InvestPro</div>
         <div className="card-body">
           <div className="flex gap-2 mb-4 justify-center">
-            <button className={`tab ${mode==='login' ? 'tab-active' : ''}`} onClick={()=>setMode("login")}>Вход</button>
-            <button className={`tab ${mode==='register' ? 'tab-active' : ''}`} onClick={()=>setMode("register")}>Регистрация</button>
+            <button className={`tab ${mode==='login' ? 'tab-active' : ''}`} onClick={()=>setMode("login")}>Войти</button>
+            <button className={`tab ${mode==='register' ? 'tab-active' : ''}`} onClick={()=>setMode("register")}>Зарегистрироваться</button>
           </div>
 
           {mode==="register" && (
-            <input className="input mb-3" placeholder="Ваше имя"
+            <input className="input mb-3" placeholder="Имя"
                    value={form.name} onChange={e=>setForm({...form, name:e.target.value})}/>
           )}
           <input className="input mb-3" placeholder="Email"
@@ -39,11 +57,13 @@ export default function AuthPage() {
 
           {error && <div className="text-danger text-sm mb-3 text-center">{error}</div>}
           <button onClick={submit} className="btn w-full">Продолжить</button>
-          <p className="text-xs text-muted mt-3 text-center">
-            Демонстрационная авторизация: данные сохраняются локально в браузере.
-          </p>
+
+          <div className="text-xs text-muted mt-4 space-y-1">
+            <div className="text-center">Демо-доступ: <span className="font-mono">test@mail.ru / 123</span></div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+

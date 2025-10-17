@@ -1,7 +1,5 @@
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
 import { samplePortfolios } from "../data/samplePortfolios";
-import { apiListPortfolios, type BackendPortfolio } from "../lib/api";
 
 function Sparkline({ data }: { data: number[] }) {
   const w = 120, h = 36, pad = 4;
@@ -17,21 +15,9 @@ function Sparkline({ data }: { data: number[] }) {
 }
 
 export default function PortfolioPage(){
-  const [items, setItems] = useState(samplePortfolios);
-
-  useEffect(() => {
-    // Try loading from backend for demo user id=1
-    apiListPortfolios(1)
-      .then((arr) => {
-        const mapped = arr.map(backendToCard);
-        if (mapped.length) setItems(mapped);
-      })
-      .catch(() => {});
-  }, []);
-
   return (
     <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-      {items.map(p => (
+      {samplePortfolios.map(p => (
         <Link key={p.id} to={`/portfolios/${p.id}`} className="card block hover:opacity-95 transition">
           <div className="card-body">
             <div className="flex justify-between items-start mb-3">
@@ -39,7 +25,7 @@ export default function PortfolioPage(){
                 <h3 className="text-lg font-semibold">{p.name}</h3>
                 <p className="text-xs text-muted mt-0.5">Риск: {p.riskLevel}</p>
               </div>
-              <span className="text-xs px-2 py-1 rounded-lg bg-white/5 border border-border">Демо</span>
+              <span className="text-xs px-2 py-1 rounded-lg bg-white/5 border border-border">Активен</span>
             </div>
 
             <div className="flex items-end justify-between">
@@ -52,40 +38,18 @@ export default function PortfolioPage(){
 
             <div className="mt-4">
               <div className="flex justify-between text-xs text-muted mb-1">
-                <span>Крупнейшая доля</span>
+                <span>Топ-актив</span>
                 <span>{Math.max(...p.assets.map(a=>a.allocation))*100}%</span>
               </div>
               <div className="w-full h-2 bg-white/10 rounded overflow-hidden">
                 <div className="h-2 bg-primary rounded" style={{width:`${Math.max(...p.assets.map(a=>a.allocation))*100}%`}}/>
               </div>
-              <div className="text-xs text-muted mt-1">Sharpe: {p.metrics.sharpeRatio.toFixed(2)}</div>
+              <div className="text-xs text-muted mt-1">Шарп: {p.metrics.sharpeRatio.toFixed(2)}</div>
             </div>
           </div>
         </Link>
       ))}
     </div>
   );
-}
-
-function backendToCard(p: BackendPortfolio) {
-  const id = String(p.id);
-  const name = `Портфель #${p.id}`;
-  const totalValue = Math.max(1, Math.round(p.investment_amount));
-  const expectedReturn = isFinite(Number(p.expected_return)) ? Number(p.expected_return) : 0; // assume 0..1
-  const riskLevel = p.risk_profile || "Unknown";
-  const sparkline = makeSparkline();
-  const assets: { ticker:string; name:string; allocation:number; expectedReturn:number; risk:number }[] = [
-    { ticker: 'ETF', name: 'Index Fund', allocation: 0.5, expectedReturn: 0.08, risk: 0.15 },
-    { ticker: 'BND', name: 'Bonds', allocation: 0.3, expectedReturn: 0.04, risk: 0.05 },
-    { ticker: 'GLD', name: 'Gold', allocation: 0.2, expectedReturn: 0.06, risk: 0.12 },
-  ];
-  return { id, name, totalValue, expectedReturn, riskLevel, sparkline, assets, metrics: { sharpeRatio: Number(p.sharpe_ratio ?? 1), volatility: Number(p.portfolio_risk ?? 0.1), maxDrawdown: 0.15 } };
-}
-
-function makeSparkline(){
-  const arr:number[] = [];
-  let x = 100;
-  for (let i=0;i<12;i++) { x += (Math.random()-0.4)*5; arr.push(Math.round(x)); }
-  return arr;
 }
 

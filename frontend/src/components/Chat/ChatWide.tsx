@@ -1,15 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { type RootState } from "../../store/store";
-import { useWebSocket } from "../../hooks/useWebSocket";
-import { setMessages } from "../../store/chatSlice";
+import { pushMessage, setMessages, setTyping, setStage } from "../../store/chatSlice";
 import { Link } from "react-router-dom";
+import { apiChatAudio, apiChatText } from "../../lib/api";
 
 function classNames(...cls: Array<string | false | null | undefined>) {
   return cls.filter(Boolean).join(" ");
 }
 
-const WS_URL = (import.meta as any).env?.VITE_WS_URL || "ws://localhost:8000/ws";
+// API base is handled inside api.ts
 const steps = [
   { id: "goals", label: "Определение целей" },
   { id: "risk", label: "Риск‑профиль" },
@@ -25,7 +25,7 @@ export default function ChatWide() {
     isAuth: s.auth.isAuthenticated,
   }));
 
-  const { sendMessage } = useWebSocket(WS_URL);
+  const user = useSelector((s: RootState) => s.auth.user);
 
   const [draft, setDraft] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -57,16 +57,22 @@ export default function ChatWide() {
     try { sessionStorage.setItem("chat_history", JSON.stringify(messages)); } catch {}
   }, [messages]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
-    if (text === "/risk") {
-      sendMessage({}, "start_risk");
-      setDraft("");
-      return;
-    }
-    sendMessage(text, "message");
     setDraft("");
+    const id = user?.id || user?.email || "demo";
+    dispatch(pushMessage({ id: crypto.randomUUID(), type: "message", content: text, sender: "user", ts: Date.now() }));
+    if (text === "/risk") { triggerRisk(); return; }
+    try {
+      dispatch(setTyping(true));
+      const reply = await apiChatText(String(id), text);
+      dispatch(pushMessage({ id: crypto.randomUUID(), type: "message", content: reply || "", sender: "ai", ts: Date.now() }));
+    } catch (e:any) {
+      dispatch(pushMessage({ id: crypto.randomUUID(), type: "message", content: `Ошибка ответа сервера: ${e?.message || e}`, sender: "ai", ts: Date.now() }));
+    } finally {
+      dispatch(setTyping(false));
+    }
   };
 
   const startRecording = async () => {
@@ -77,14 +83,60 @@ export default function ChatWide() {
     mr.ondataavailable = (e) => e.data && chunksRef.current.push(e.data);
     mr.onstop = async () => {
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-      const base64 = await blobToBase64(blob);
-      sendMessage({ mime: "audio/webm", data: base64 }, "audio");
+      const file = new File([blob], `recording-${Date.now()}.webm`, { type: "audio/webm" });
+      const id = user?.id || user?.email || "demo";
+      dispatch(pushMessage({ id: crypto.randomUUID(), type: "audio", content: { mime: file.type, data: await blobToBase64(blob) }, sender: "user", ts: Date.now() }));
+      try {
+        dispatch(setTyping(true));
+        const reply = await apiChatAudio(String(id), file);
+        dispatch(pushMessage({ id: crypto.randomUUID(), type: "message", content: reply || "", sender: "ai", ts: Date.now() }));
+      } catch (e:any) {
+        dispatch(pushMessage({ id: crypto.randomUUID(), type: "message", content: `Ошибка распознавания/диалога: ${e?.message || e}` , sender: "ai", ts: Date.now() }));
+      } finally {
+        dispatch(setTyping(false));
+      }
       setIsRecording(false);
     };
     mr.start();
     setIsRecording(true);
   };
   const stopRecording = () => mediaRecorderRef.current?.stop();
+
+  function triggerRisk() {
+    dispatch(setStage("risk"));
+    dispatch(
+      pushMessage({ id: crypto.randomUUID(), type: "risk_questions", content: makeRiskQuestion(), sender: "ai", ts: Date.now() })
+    );
+  }
+
+  function handleRiskAnswer(_qid: string, answers: string[]) {
+    // trivial scoring for demo: pick index to compute score
+    const choice = answers[0] || "q1o2";
+    const score = choice === "q1o1" ? 25 : choice === "q1o2" ? 60 : 85;
+    const profile = score < 40 ? "Консервативный" : score < 70 ? "Умеренный" : "Агрессивный";
+    dispatch(
+      pushMessage({ id: crypto.randomUUID(), type: "risk_result", content: { score, profile }, sender: "ai", ts: Date.now() })
+    );
+    dispatch(setStage("portfolio"));
+    // lightweight portfolio recommendation
+    const portfolio = {
+      id: profile === "Консервативный" ? "p2" : profile === "Умеренный" ? "p1" : "p3",
+      name: profile === "Консервативный" ? "Conservative Income" : profile === "Умеренный" ? "Growth 60/40" : "Aggressive Tech",
+      totalValue: 150000,
+      expectedReturn: profile === "Консервативный" ? 6.4 : profile === "Умеренный" ? 11.8 : 18.2,
+      riskLevel: profile,
+      assets: [
+        { ticker: "BND", name: "US Bonds", allocation: profile === "Агрессивный" ? 0.2 : profile === "Умеренный" ? 0.4 : 0.6, expectedReturn: 4.0, risk: 0.05 },
+        { ticker: "VTI", name: "US Stocks", allocation: profile === "Агрессивный" ? 0.6 : profile === "Умеренный" ? 0.4 : 0.2, expectedReturn: 10.0, risk: 0.18 },
+        { ticker: "GLD", name: "Gold", allocation: 0.1, expectedReturn: 6.0, risk: 0.12 },
+        { ticker: "Cash", name: "Cash", allocation: 0.1, expectedReturn: 2.0, risk: 0.0 },
+      ],
+      metrics: { sharpeRatio: profile === "Агрессивный" ? 1.4 : profile === "Умеренный" ? 1.2 : 0.9, volatility: profile === "Агрессивный" ? 0.19 : profile === "Умеренный" ? 0.11 : 0.06, maxDrawdown: profile === "Агрессивный" ? -0.28 : profile === "Умеренный" ? -0.18 : -0.09 },
+    };
+    dispatch(
+      pushMessage({ id: crypto.randomUUID(), type: "portfolio_recommendation", content: { portfolio }, sender: "ai", ts: Date.now() })
+    );
+  }
 
   return (
     <div className="card">
@@ -105,7 +157,7 @@ export default function ChatWide() {
                     "w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 transition",
                     stage === st.id ? "bg-white/10 text-text" : "text-muted"
                   )}
-                  onClick={() => { if (st.id === "risk") sendMessage({}, "start_risk"); }}
+                  onClick={() => { if (st.id === "risk") triggerRisk(); }}
                 >
                   {st.label}
                 </button>
@@ -124,7 +176,7 @@ export default function ChatWide() {
                     type={m.type}
                     content={m.content}
                     isAuth={isAuth}
-                    onRiskAnswer={(qid, answers)=>sendMessage({ questionId: qid, answers }, "risk_answer", { echo: false })}
+                    onRiskAnswer={(qid, answers)=> handleRiskAnswer(qid, answers)}
                   />
                 ))}
               </div>
@@ -161,6 +213,24 @@ export default function ChatWide() {
     </div>
   );
 }
+
+function makeRiskQuestion() {
+  return {
+    questions: [
+      {
+        id: "q1",
+        question: "Как вы относитесь к риску при инвестировании?",
+        multiSelect: false,
+        options: [
+          { id: "q1o1", text: "Предпочитаю сохранность средств" },
+          { id: "q1o2", text: "Готов к умеренному риску ради доходности" },
+          { id: "q1o3", text: "Ориентируюсь на высокую доходность и риск" },
+        ],
+      },
+    ],
+  };
+}
+
 
 function MessageBubble({ sender, type, content, isAuth, onRiskAnswer }: { sender: "user" | "ai"; type: string; content: unknown; isAuth?: boolean; onRiskAnswer?: (qid:string, answers:string[])=>void }) {
   const isUser = sender === "user";
