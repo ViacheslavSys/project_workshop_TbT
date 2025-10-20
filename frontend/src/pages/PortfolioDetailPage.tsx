@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { samplePortfolios } from "../data/samplePortfolios";
 import PortfolioAssetsTable, { type PortfolioAssetRow } from "../components/PortfolioAssetsTable";
 import InfoTip from "../components/InfoTip";
+import MLReport from "../components/MLReport";
 
 function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
 function colorFor(v: number, min: number, max: number, invert = false) {
@@ -136,6 +137,42 @@ export default function PortfolioDetailPage() {
     }))
   ), [portfolio]);
 
+  const reportExplanation = useMemo(() => (
+    [
+      "Модель оптимизирует портфель по соотношению риск/доходность с учётом ограничений по долям и профилю риска.",
+      "- Ожидаемая доходность — средневзвешенная по активам;",
+      "- Риск — оценка на основе волатильности;",
+      "- Sharpe — эффективность доходности на единицу риска;",
+      "- Дивиденды/YTM — поток выплат (для облигаций — доходность к погашению)."
+    ].join("\n\n")
+  ), []);
+
+  const reportFormulas = useMemo(() => ([
+    {
+      title: "Ожидаемая доходность портфеля",
+      latex: "E[R_p] = \\sum_i w_i \\cdot E[R_i]",
+      variables: [
+        { name: "w_i", meaning: "доля i-го актива" },
+        { name: "E[R_i]", meaning: "ожидаемая доходность i-го актива" }
+      ]
+    },
+    {
+      title: "Риск (волатильность) портфеля (упрощённо)",
+      latex: "\\sigma_p = \\sqrt{\\sum_i w_i^2 \\sigma_i^2 + 2 \\sum_{i<j} w_i w_j \\sigma_i \\sigma_j \\rho_{ij}}",
+      variables: [
+        { name: "\\sigma_i", meaning: "волатильность i-го актива" },
+        { name: "\\rho_{ij}", meaning: "корреляция активов i и j" }
+      ]
+    },
+    {
+      title: "Коэффициент Шарпа",
+      latex: "Sharpe = \\frac{E[R_p] - R_f}{\\sigma_p}",
+      variables: [
+        { name: "R_f", meaning: "безрисковая ставка" }
+      ]
+    }
+  ]), []);
+
   return (
     <div className="grid gap-6">
       <div className="flex items-center justify-between">
@@ -195,8 +232,9 @@ export default function PortfolioDetailPage() {
         </div>
       </div>
 
-      <PortfolioAssetsTable rows={tableRows} title="Активы и метрики" />
+            <MLReport explanation={reportExplanation} formulas={reportFormulas} />
+
+<PortfolioAssetsTable rows={tableRows} title="Активы и метрики" />
     </div>
   );
 }
-
