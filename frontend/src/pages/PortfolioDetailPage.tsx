@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { samplePortfolios } from "../data/samplePortfolios";
+import PortfolioAssetsTable, { type PortfolioAssetRow } from "../components/PortfolioAssetsTable";
 
 function LineChart({ data }: { data: number[] }) {
   const w = 560, h = 160, pad = 16;
@@ -20,6 +21,20 @@ export default function PortfolioDetailPage() {
   const portfolio = useMemo(() => samplePortfolios.find(p => p.id === id) || samplePortfolios[0], [id]);
 
   const totalAlloc = portfolio.assets.reduce((s,a)=>s+a.allocation,0) || 1;
+  const tableRows: PortfolioAssetRow[] = useMemo(() => (
+    portfolio.assets.map(a => ({
+      ticker: a.ticker,
+      name: a.name,
+      allocation: a.allocation,
+      expectedReturn: a.expectedReturn,
+      risk: a.risk,
+      value: portfolio.totalValue * a.allocation,
+      dividendYield: a.dividendYield,
+      ytm: a.ytm,
+      sector: a.sector,
+      cycleFactor: a.cycleFactor,
+    }))
+  ), [portfolio]);
 
   return (
     <div className="grid gap-6">
@@ -80,6 +95,8 @@ export default function PortfolioDetailPage() {
           </div>
         </div>
       </div>
+
+      <PortfolioAssetsTable rows={tableRows} title="Активы и метрики" />
     </div>
   );
 }
