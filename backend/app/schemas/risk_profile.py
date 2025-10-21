@@ -1,5 +1,6 @@
+from typing import List, Optional
+
 from pydantic import BaseModel
-from typing import List
 
 
 class RiskQuestion(BaseModel):
@@ -19,6 +20,7 @@ class RiskProfileResult(BaseModel):
     conservative_score: int
     moderate_score: int
     aggressive_score: int
+    investment_horizon: Optional[str] = None
 
 
 class ClarificationAnswer(BaseModel):

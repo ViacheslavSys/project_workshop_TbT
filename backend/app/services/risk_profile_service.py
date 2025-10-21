@@ -1,170 +1,218 @@
-from typing import List, Optional, Dict
+from typing import Dict, List
+
 from app.schemas.risk_profile import RiskAnswer, RiskProfileResult
 
-
 QUESTIONS = [
-    {"id": 1, "text": "На какой срок вы планируете инвестировать?",
-     "options": ["A) до 3 лет", "B) 3–7 лет", "C) более 7 лет"]},
-    {"id": 2, "text": "Какая ваша главная инвестиционная цель?  ",
-     "options": [
-         "A) сохранить капитал, защитить от инфляции ",
-         "B) постепенно накопить на конкретную цель",
-         "C) максимально увеличить капитал в долгосрочной перспективе"
-        ]
+    {
+        "id": 1,
+        "text": "На какой срок вы планируете инвестировать?",
+        "options": ["A) До 3 лет", "B) 3–7 лет", "C) Более 7 лет"],
     },
-    {"id": 3, "text": "Какую часть вашего капитала вы планируете инвестировать?",
-     "options": ["A) менее 25%", "B) от 25% до 50%", "C) более 50%"]},
-    {"id": 4, "text": " Если ваш портфель упадет на 20% за 6 месяцев, что вы сделаете?",
-     "options": ["A) продам все, чтобы избежать дальнейших потерь ",
-                 "B) оставлю как есть, подожду восстановления",
-                 "C) докуплю больше активов по низким ценам "]},
-    {"id": 5, "text": " Какую максимальную просадку вы готовы пережить?",
-     "options": ["A) до 10% ", "B) от 10% до 25%", "C) более 25%"]},
-    {"id": 6, "text": "Какую доходность вы считаете приемлемой?",
-     "options": ["A) 5-8% годовых", "B) 8-12% годовых", "C) 15%+ годовых "]},
-    {"id": 7, "text": " Какой у вас опыт инвестирования?",
-     "options": ["A) нет опыта или меньше 1 года",
-                 "B) от 1 до 3 лет(есть базовый опыт)",
-                 "C) более 3 лет (регулярно инвестирую)"]},
-    {"id": 8, "text": "Насколько хорошо вы разбираетесь в инвестиционных инструментах?",
-     "options": ["A) знаю только базовые инструменты (вклады, облигации)",
-                 "B) разбираюсь в акциях, ETF, фондах",
-                 "C) понимаю сложные инструменты (деривативы, венчурные инвестиции)"]},
+    {
+        "id": 2,
+        "text": "Есть ли у вас опыт инвестирования?",
+        "options": ["A) Нет опыта", "B) 1-3 года", "C) Более 3 лет"],
+    },
+    {
+        "id": 3,
+        "text": "Как вы предпочитаете управлять инвестициями?",
+        "options": [
+            "A) Автоматически / доверительное управление",
+            "B) Через фонды и ETF",
+            "C) Самостоятельно, анализируя рынок",
+        ],
+    },
+    {
+        "id": 4,
+        "text": "Как часто вы планируете пополнять портфель?",
+        "options": [
+            "A) Иногда / нерегулярно",
+            "B) Раз в квартал",
+            "C) Регулярно (раз в месяц или чаще)",
+        ],
+    },
+    {
+        "id": 5,
+        "text": "Текущий инвестиционный капитал",
+        "options": ["A) Менее 1 млн ₽", "B) 1-5 млн ₽", "C) Более 5 млн ₽"],
+    },
+    {
+        "id": 6,
+        "text": "Дополнительные вложения в год",
+        "options": ["A) Менее 300 тыс ₽", "B) 300 тыс - 1 млн ₽", "C) Более 1 млн ₽"],
+    },
+    {
+        "id": 7,
+        "text": "Доля инвестиций от дохода",
+        "options": ["A) Менее 20%", "B) 20-40%", "C) Более 40%"],
+    },
+    {
+        "id": 8,
+        "text": "Просадка, с которой вы готовы мириться",
+        "options": ["A) До -10%", "B) -10% до -25%", "C) Более -25%"],
+    },
+    {
+        "id": 9,
+        "text": "Как вы поступите при падении рынка на 20%?",
+        "options": [
+            "A) Продам часть активов",
+            "B) Ничего не буду делать",
+            "C) Докуплю",
+        ],
+    },
+    {
+        "id": 10,
+        "text": "Какая доходность приемлема?",
+        "options": ["A) 6-10% годовых", "B) 10-18% годовых", "C) 18%+ годовых"],
+    },
+    {
+        "id": 11,
+        "text": "Резкое падение рынка вызывает у вас...",
+        "options": [
+            "A) Стресс и тревогу",
+            "B) Умеренное беспокойство",
+            "C) Спокойствие / интерес",
+        ],
+    },
+    {
+        "id": 12,
+        "text": "Как вы реагируете на новости о кризисах?",
+        "options": [
+            "A) Сразу проверяю счета",
+            "B) Наблюдаю, не предпринимаю действий",
+            "C) Рассматриваю как возможность",
+        ],
+    },
+    {
+        "id": 13,
+        "text": "Как вы оцениваете свою психологическую устойчивость к потерям?",
+        "options": ["A) Слабая", "B) Средняя", "C) Высокая"],
+    },
 ]
 
 
 def check_all_contradictions(answers: dict) -> List[Dict]:
+    """Проверка противоречий по новым правилам"""
     contradictions = []
 
-    if answers.get(1) == "A" and answers.get(6) == "C":
-        contradictions.append({
-            "code": "short_vs_high_yield",
-            "question": (
-                "Вы указали короткий срок (до 3 лет) и доходность 15%+. "
-                "Что для вас важнее?"
-            ),
-            "options": [
-                "A) Сохранить срок, доходность не так важна",
-                "B) Можно продлить срок ради доходности",
-            ],
-        })
-
-    if answers.get(5) == "A" and answers.get(4) == "C":
-        contradictions.append({
-            "code": "risk_tolerance_vs_buy_dip",
-            "question": (
-                "Вы указали, что готовы к максимальной просадке только до 10%, "
-                "но при этом готовы докупать активы при падении на 20%. "
-                "Как вы поступите при просадке 15%?"
-            ),
-            "options": [
-                "A) Пересмотреть свою готовность к риску",
-                "B) Подтвердить стратегию докупки",
-            ],
-        })
-
-    if answers.get(7) == "A" and answers.get(8) == "C":
-        contradictions.append({
-            "code": "no_experience_vs_complex_tools",
-            "question": (
-                "Вы отметили, что у вас нет опыта инвестирования, "
-                "но при этом разбираетесь в сложных инструментах. "
-                "Хотите уточнить ваш опыт?"
-            ),
-            "options": [
-                "A) У меня теоретические знания, нужна практика",
-                "B) У меня есть практический опыт",
-            ],
-        })
+    # Поведенческие противоречия
+    if answers.get(8) == "A" and answers.get(9) == "C":
+        contradictions.append(
+            {
+                "code": "low_risk_buy_dip",
+                "question": "Вы указали низкую терпимость к просадкам, "
+                + "но готовы докупать при падении. Что для вас приоритетнее?",
+                "options": [
+                    "A) Сохранение капитала важнее",
+                    "B) Готов к умеренному риску для роста",
+                ],
+            }
+        )
 
     if answers.get(2) == "A" and answers.get(3) == "C":
-        contradictions.append({
-            "code": "preservation_vs_high_investment",
-            "question": (
-                "Ваша цель - сохранение капитала, но вы готовы инвестировать "
-                "более 50% средств. Что для вас приоритетнее?"
-            ),
-            "options": [
-                "A) Сохранение капитала, уменьшу долю инвестиций", 
-                "B) Защита от инфляции, готов к значительным вложениям",
-            ],
-        })
+        contradictions.append(
+            {
+                "code": "no_experience_self_management",
+                "question": "Без опыта вы выбираете самостоятельное управление. "
+                + "Рекомендуем начать с ETF. Согласны?",
+                "options": [
+                    "A) Да, начну с ETF",
+                    "B) Нет, хочу самостоятельное управление",
+                ],
+            }
+        )
+
+    if answers.get(5) == "C" and (answers.get(11) == "A" or answers.get(9) == "A"):
+        contradictions.append(
+            {
+                "code": "large_capital_fear",
+                "question": "При крупном капитале вы отмечаете осторожность. "
+                + "Хотите консервативную стратегию с защитой?",
+                "options": [
+                    "A) Да, сохранение важнее роста",
+                    "B) Нет, готов к умеренному риску",
+                ],
+            }
+        )
+
+    if answers.get(5) == "A" and answers.get(10) == "C":
+        contradictions.append(
+            {
+                "code": "small_capital_high_return",
+                "question": "При небольшом капитале вы ожидаете высокую доходность."
+                + " Рекомендуем начать с умеренных стратегий. Согласны?",
+                "options": [
+                    "A) Да, начну с умеренного риска",
+                    "B) Нет, готов к высокому риску",
+                ],
+            }
+        )
+
+    if answers.get(7) == "C" and answers.get(5) == "A":
+        contradictions.append(
+            {
+                "code": "high_investment_low_capital",
+                "question": "Вы инвестируете значительную долю дохода при небольшом "
+                + "капитале. Уверены, что это не повлияет на финансовую стабильность?",
+                "options": [
+                    "A) Пересмотрю долю инвестиций",
+                    "B) Это комфортный для меня уровень",
+                ],
+            }
+        )
 
     return contradictions
 
 
-def determine_profile_v2(conservative, moderate, aggressive, answers_map) -> str:
-    conservative, moderate, aggressive = apply_restrictions(
-        conservative, moderate, aggressive, answers_map
-    )
+def apply_restrictions(
+    conservative: int, moderate: int, aggressive: int, answers_map: dict
+):
+    """Применение ограничивающих условий"""
 
-    if (aggressive >= 15 and aggressive > moderate + 5 and answers_map.get(7) != "A"
-        and answers_map.get(1) != "A"):
-        return "Агрессивный"
+    if answers_map.get(2) == "A":
+        aggressive = min(aggressive, moderate)
 
-    if (conservative >= 5 and conservative > moderate):
-        return "Консервативный"
+    if answers_map.get(8) == "A":
+        aggressive = 0
+        moderate = 0
+        conservative = max(conservative, 8)
 
-    if (moderate >= 8 or answers_map.get(7) == "A" or answers_map.get(1) == "A"):
-        return "Умеренный"
+    if answers_map.get(11) == "A" or answers_map.get(9) == "A":
+        aggressive = 0
+        moderate = 0
+        conservative = max(conservative, 8)
 
-    return "Умеренный"
-
-
-def apply_restrictions(conservative, moderate, aggressive, answers_map):
-    if answers_map.get(7) == "A":
-        aggressive = moderate
-
-    if answers_map.get(1) == "A":
-        aggressive = moderate
+    if answers_map.get(2) == "A" and answers_map.get(5) == "C":
+        aggressive = min(aggressive, moderate)
 
     return conservative, moderate, aggressive
 
 
-def calculate_profile_v2_with_clarifications(
-    answers: List[RiskAnswer],
-    clarification_answers: List[Dict[str, str]]
-) -> RiskProfileResult:
-    """Расчет профиля с учетом ВСЕХ уточняющих ответов"""
-    answers_map = {a.question_id: a.answer.strip()[0].upper() for a in answers}
+def determine_profile_v2(
+    conservative: int, moderate: int, aggressive: int, answers_map: dict
+) -> str:
+    """Определение профиля по новым правилам"""
 
-    # Применяем ВСЕ уточняющие ответы
-    for clarification in clarification_answers:
-        code = clarification["code"]
-        answer = clarification["answer"]
-        
-        if code == "short_vs_high_yield":
-            if answer == "A":
-                answers_map[6] = "A"  # снижаем доходность
-            elif answer == "B":
-                answers_map[1] = "C"  # увеличиваем срок
+    conservative, moderate, aggressive = apply_restrictions(
+        conservative, moderate, aggressive, answers_map
+    )
 
-        elif code == "risk_tolerance_vs_buy_dip":
-            if answer == "A":
-                answers_map[4] = "B"  # меняем стратегию
-            elif answer == "B":
-                answers_map[5] = "B"  # повышаем терпимость
-
-        elif code == "no_experience_vs_complex_tools":
-            if answer == "A":
-                answers_map[8] = "A"  # упрощаем инструменты
-
-        elif code == "preservation_vs_high_investment":
-            if answer == "A":
-                answers_map[3] = "A"  # уменьшаем долю
-
-    # Используем существующую функцию расчета
-    return calculate_profile_v2([RiskAnswer(question_id=k, answer=v) for k, v in answers_map.items()])
+    if aggressive >= 15:
+        return "Агрессивный"
+    elif conservative <= 7:
+        return "Консервативный"
+    else:
+        return "Умеренный"
 
 
-def calculate_profile_v2(
-    answers: List[RiskAnswer],
-) -> RiskProfileResult:
+def calculate_profile_v2(answers: List[RiskAnswer]) -> RiskProfileResult:
+    """Основной расчет профиля"""
     answers_map = {a.question_id: a.answer.strip()[0].upper() for a in answers}
 
     conservative = moderate = aggressive = 0
+
     scoring = {
-        1: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
+        1: {"A": ("", 0), "B": ("", 0), "C": ("", 0)},
         2: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         3: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         4: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
@@ -172,6 +220,11 @@ def calculate_profile_v2(
         6: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         7: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         8: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
+        9: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
+        10: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
+        11: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
+        12: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
+        13: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
     }
 
     for qid, ans in answers_map.items():
@@ -181,18 +234,59 @@ def calculate_profile_v2(
                 conservative += val
             elif prof == "mod":
                 moderate += val
-            else:
+            elif prof == "agr":
                 aggressive += val
 
-    conservative, moderate, aggressive = apply_restrictions(
-        conservative, moderate, aggressive, answers_map
-    )
-
     profile = determine_profile_v2(conservative, moderate, aggressive, answers_map)
+
+    horizon_mapping = {"A": "До 3 лет", "B": "3–7 лет", "C": "Более 7 лет"}
+    investment_horizon = horizon_mapping.get(answers_map.get(1))
 
     return RiskProfileResult(
         profile=profile,
         conservative_score=conservative,
         moderate_score=moderate,
         aggressive_score=aggressive,
+        investment_horizon=investment_horizon,
+    )
+
+
+def calculate_profile_v2_with_clarifications(
+    answers: List[RiskAnswer], clarification_answers: List[Dict[str, str]]
+) -> RiskProfileResult:
+    """Расчет профиля с учетом уточняющих ответов"""
+    answers_map = {a.question_id: a.answer.strip()[0].upper() for a in answers}
+
+    for clarification in clarification_answers:
+        code = clarification["code"]
+        answer = clarification["answer"].strip()[0].upper()
+
+        if code == "low_risk_buy_dip":
+            if answer == "A":
+                answers_map[9] = "A"
+            elif answer == "B":
+                answers_map[8] = "B"
+        elif code == "no_experience_self_management":
+            if answer == "A":
+                answers_map[3] = "B"
+
+        elif code == "large_capital_fear":
+            if answer == "A":
+                answers_map[9] = "A"
+                answers_map[10] = "A"
+            elif answer == "B":
+                answers_map[11] = "B"
+        elif code == "small_capital_high_return":
+            if answer == "A":
+                answers_map[10] = "B"
+            elif answer == "B":
+                pass
+
+        elif code == "high_investment_low_capital":
+            if answer == "A":
+                answers_map[7] = "B"
+
+    # Пересчитываем с обновленными ответами
+    return calculate_profile_v2(
+        [RiskAnswer(question_id=k, answer=v) for k, v in answers_map.items()]
     )
