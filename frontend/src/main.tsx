@@ -9,13 +9,16 @@ import AuthPage from "./pages/AuthPage.tsx";
 import ChatPage from "./pages/ChatPage.tsx";
 import PortfolioPage from "./pages/PortfolioPage.tsx";
 import PortfolioDetailPage from "./pages/PortfolioDetailPage.tsx";
+import AccountPage from "./pages/AccountPage.tsx";
 
 const router = createBrowserRouter([
   { path: "/", element: <App /> , children: [
-    { index: true, path: "auth", element: <AuthPage/> },
+    { path: "auth", element: <AuthPage/> },
     { path: "chat", element: <ChatPage/> },
     { path: "portfolios", element: <PortfolioPage/> },
     { path: "portfolios/:id", element: <PortfolioDetailPage/> },
+    { path: "account", element: <AccountPage/> },
+    { index: true, element: <PortfolioPage/> },
   ]},
 ]);
 
