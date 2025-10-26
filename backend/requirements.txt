@@ -11,11 +11,12 @@ httpx
 email-validator
 passlib[bcrypt]
 
+redis>=5.0.0
 
 openai-whisper==20250625
 torch==2.8.0
 torchaudio==2.8.0
-numpy==2.2.6  
+numpy==2.2.6
 
 Jinja2==3.1.6
 MarkupSafe==3.0.2
