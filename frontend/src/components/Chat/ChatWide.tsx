@@ -276,8 +276,8 @@ function PortfolioMessage({ portfolio, isAuth }: { portfolio: any; isAuth: boole
           <div className="text-center">
             <div className="mb-2">Войдите или зарегистрируйтесь, чтобы сохранить портфель</div>
             <div className="flex items-center justify-center gap-2">
-              <Link to="/" className="btn">Войти</Link>
-              <Link to="/?mode=register" className="tab">Регистрация</Link>
+              <Link to="/auth" className="btn">Войти</Link>
+              <Link to="/auth?mode=register" className="tab">Регистрация</Link>
             </div>
           </div>
         </div>
@@ -298,4 +298,5 @@ function blobToBase64(blob: Blob): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
+
 

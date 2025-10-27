@@ -1,12 +1,15 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useDispatch } from "react-redux";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { login } from "../store/authSlice";
 import { z } from "zod";
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(6) });
 
 export default function AuthPage() {
-  const [mode, setMode] = useState<"login"|"register">("login");
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const [mode, setMode] = useState<"login"|"register">(params.get("mode") === "register" ? "register" : "login");
   const [form, setForm] = useState({ name:"", email:"", password:"" });
   const [error, setError] = useState<string|undefined>();
   const dispatch = useDispatch();
@@ -14,22 +17,32 @@ export default function AuthPage() {
   const submit = () => {
     setError(undefined);
     const valid = loginSchema.safeParse({ email: form.email, password: form.password });
-    if (!valid.success) return setError("Введите корректный email и пароль (мин. 6 символов)");
-    dispatch(login({ id: crypto.randomUUID(), name: form.name || "Гость", email: form.email }));
+    if (!valid.success) return setError("Неверный email или короткий пароль (мин. 6 символов)");
+    const now = new Date().toISOString();
+    const uname = (form.name || form.email.split("@")[0] || "user").slice(0, 20);
+    dispatch(login({
+      id: crypto.randomUUID(),
+      username: uname,
+      email: form.email,
+      full_name: form.name || undefined,
+      is_active: true,
+      created_at: now,
+    } as any));
+    navigate("/portfolios");
   };
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center">
+    <div className="min-h-[70vh] flex items-center justify-center">
       <div className="card w-full max-w-md">
-        <div className="card-header text-center">Вход в InvestPro</div>
-        <div className="card-body">
+        <div className="card-header text-center">Вход / Регистрация</div>
+        <div className="card-body text-center">
           <div className="flex gap-2 mb-4 justify-center">
             <button className={`tab ${mode==='login' ? 'tab-active' : ''}`} onClick={()=>setMode("login")}>Вход</button>
             <button className={`tab ${mode==='register' ? 'tab-active' : ''}`} onClick={()=>setMode("register")}>Регистрация</button>
           </div>
 
           {mode==="register" && (
-            <input className="input mb-3" placeholder="Ваше имя"
+            <input className="input mb-3" placeholder="Имя"
                    value={form.name} onChange={e=>setForm({...form, name:e.target.value})}/>
           )}
           <input className="input mb-3" placeholder="Email"
@@ -40,7 +53,7 @@ export default function AuthPage() {
           {error && <div className="text-danger text-sm mb-3 text-center">{error}</div>}
           <button onClick={submit} className="btn w-full">Продолжить</button>
           <p className="text-xs text-muted mt-3 text-center">
-            Демонстрационная авторизация: данные сохраняются локально в браузере.
+            Тестовая авторизация: данные сохраняются только в состоянии приложения.
           </p>
         </div>
       </div>
