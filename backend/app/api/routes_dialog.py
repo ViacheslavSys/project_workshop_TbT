@@ -3,8 +3,9 @@ from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
+from app.core.redis_cache import cache
 from app.schemas.chat import ChatResponse
-from app.services.llm_service import send_to_llm
+from app.services.llm_service import parse_llm_goal_response, send_to_llm
 from app.services.whisper_processor import whisper_processor
 
 router = APIRouter(prefix="/dialog", tags=["dialog"])
@@ -36,11 +37,9 @@ async def dialog_chat(
 
             result = await whisper_processor.transcribe_audio_file(audio_file)
             user_message = result["text"].strip()
-            print(f"🎤 [{user_id}] сказал голосом: {user_message}")
 
         elif message:
             user_message = message.strip()
-            print(f"💬 [{user_id}] написал: {user_message}")
 
         else:
             raise HTTPException(
@@ -48,9 +47,24 @@ async def dialog_chat(
             )
 
         llm_response = send_to_llm(user_id, user_message)
-        print(f"🧠 Ответ LLM: {llm_response[:200]}...")
 
-        return ChatResponse(response=llm_response)
+        goal_data = parse_llm_goal_response(llm_response)
+
+        if goal_data:
+            if goal_data.term is not None:
+                cache.set_json(f"user:{user_id}:llm_goal", goal_data.dict())
+
+                friendly_response = (
+                    f"Отлично! Я понял вашу цель: {goal_data.reason}. "
+                    f"Срок: {goal_data.term} месяцев, "
+                    f"Сумма: {goal_data.sum:,} ₽, "
+                    f"Капитал: {goal_data.capital:,} ₽. "
+                    f"Теперь перейдем к определению вашего риск-профиля."
+                )
+        else:
+            friendly_response = llm_response
+
+        return ChatResponse(response=friendly_response)
 
     except Exception as e:
         raise HTTPException(
