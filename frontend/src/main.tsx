@@ -13,12 +13,12 @@ import AccountPage from "./pages/AccountPage.tsx";
 
 const router = createBrowserRouter([
   { path: "/", element: <App /> , children: [
-    { path: "auth", element: <AuthPage/> },
     { path: "chat", element: <ChatPage/> },
+    { path: "auth", element: <AuthPage/> },
     { path: "portfolios", element: <PortfolioPage/> },
     { path: "portfolios/:id", element: <PortfolioDetailPage/> },
     { path: "account", element: <AccountPage/> },
-    { index: true, element: <PortfolioPage/> },
+    { index: true, element: <ChatPage/> },
   ]},
 ]);
 
