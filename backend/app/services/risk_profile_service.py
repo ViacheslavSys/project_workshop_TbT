@@ -3,18 +3,14 @@ from typing import Dict, List
 from app.schemas.risk_profile import RiskAnswer, RiskProfileResult
 
 QUESTIONS = [
+    # Блок 1 – Опыт и вовлечённость
     {
         "id": 1,
-        "text": "На какой срок вы планируете инвестировать?",
-        "options": ["A) До 3 лет", "B) 3–7 лет", "C) Более 7 лет"],
-    },
-    {
-        "id": 2,
         "text": "Есть ли у вас опыт инвестирования?",
         "options": ["A) Нет опыта", "B) 1-3 года", "C) Более 3 лет"],
     },
     {
-        "id": 3,
+        "id": 2,
         "text": "Как вы предпочитаете управлять инвестициями?",
         "options": [
             "A) Автоматически / доверительное управление",
@@ -23,7 +19,7 @@ QUESTIONS = [
         ],
     },
     {
-        "id": 4,
+        "id": 3,
         "text": "Как часто вы планируете пополнять портфель?",
         "options": [
             "A) Иногда / нерегулярно",
@@ -31,28 +27,25 @@ QUESTIONS = [
             "C) Регулярно (раз в месяц или чаще)",
         ],
     },
+    # Блок 2 – Финансовое положение
     {
-        "id": 5,
-        "text": "Текущий инвестиционный капитал",
-        "options": ["A) Менее 1 млн ₽", "B) 1-5 млн ₽", "C) Более 5 млн ₽"],
-    },
-    {
-        "id": 6,
+        "id": 4,
         "text": "Дополнительные вложения в год",
         "options": ["A) Менее 300 тыс ₽", "B) 300 тыс - 1 млн ₽", "C) Более 1 млн ₽"],
     },
     {
-        "id": 7,
+        "id": 5,
         "text": "Доля инвестиций от дохода",
         "options": ["A) Менее 20%", "B) 20-40%", "C) Более 40%"],
     },
+    # Блок 3 – Отношение к риску
     {
-        "id": 8,
+        "id": 6,
         "text": "Просадка, с которой вы готовы мириться",
         "options": ["A) До -10%", "B) -10% до -25%", "C) Более -25%"],
     },
     {
-        "id": 9,
+        "id": 7,
         "text": "Как вы поступите при падении рынка на 20%?",
         "options": [
             "A) Продам часть активов",
@@ -61,12 +54,13 @@ QUESTIONS = [
         ],
     },
     {
-        "id": 10,
+        "id": 8,
         "text": "Какая доходность приемлема?",
         "options": ["A) 6-10% годовых", "B) 10-18% годовых", "C) 18%+ годовых"],
     },
+    # Блок 4 – Эмоциональная устойчивость
     {
-        "id": 11,
+        "id": 9,
         "text": "Резкое падение рынка вызывает у вас...",
         "options": [
             "A) Стресс и тревогу",
@@ -75,7 +69,7 @@ QUESTIONS = [
         ],
     },
     {
-        "id": 12,
+        "id": 10,
         "text": "Как вы реагируете на новости о кризисах?",
         "options": [
             "A) Сразу проверяю счета",
@@ -84,19 +78,96 @@ QUESTIONS = [
         ],
     },
     {
-        "id": 13,
+        "id": 11,
         "text": "Как вы оцениваете свою психологическую устойчивость к потерям?",
         "options": ["A) Слабая", "B) Средняя", "C) Высокая"],
     },
 ]
 
 
-def check_all_contradictions(answers: dict) -> List[Dict]:
-    """Проверка противоречий по новым правилам"""
+def convert_llm_data_to_risk_factors(
+    term_months: float, capital: float
+) -> Dict[str, str]:
+    """Конвертирует данные из LLM в факторы для риск-профиля"""
+    # Определяем горизонт инвестирования
+    if term_months <= 36:  # до 3 лет
+        horizon = "A"  # До 3 лет
+    elif term_months <= 84:  # до 7 лет
+        horizon = "B"  # 3–7 лет
+    else:
+        horizon = "C"  # Более 7 лет
+
+    # Определяем размер капитала
+    if capital < 1000000:  # менее 1 млн
+        capital_size = "A"
+    elif capital <= 5000000:  # 1-5 млн
+        capital_size = "B"
+    else:  # более 5 млн
+        capital_size = "C"
+
+    return {"horizon": horizon, "capital_size": capital_size}
+
+
+def get_llm_risk_factors(user_id: str, cache) -> Dict:
+    """Получает факторы риска из данных LLM для пользователя"""
+    goal_data = cache.get_json(f"user:{user_id}:llm_goal")
+    if not goal_data:
+        raise ValueError(f"Данные цели не найдены для пользователя {user_id}")
+
+    return convert_llm_data_to_risk_factors(
+        term_months=goal_data["term"], capital=goal_data["capital"]
+    )
+
+
+def check_all_contradictions(answers: dict, llm_data: Dict = None) -> List[Dict]:
+    """Проверка противоречий с учетом данных из LLM"""
     contradictions = []
 
-    # Поведенческие противоречия
-    if answers.get(8) == "A" and answers.get(9) == "C":
+    if llm_data:
+        horizon = llm_data.get("horizon")
+        capital_size = llm_data.get("capital_size")
+
+        if horizon == "A" and answers.get(8) == "C":
+            contradictions.append(
+                {
+                    "code": "short_term_high_return",
+                    "question": "Вы планируете инвестировать на короткий срок "
+                    + "(до 3 лет), но ожидаете высокую доходность. Что для вас важнее?",
+                    "options": [
+                        "A) Сохранить срок, снизить ожидания по доходности",
+                        "B) Готов продлить срок для достижения высокой доходности",
+                    ],
+                }
+            )
+
+        if capital_size == "A" and answers.get(8) == "C":
+            contradictions.append(
+                {
+                    "code": "small_capital_high_return",
+                    "question": "При небольшом стартовом капитале вы ожидаете "
+                    + "высокую доходность. "
+                    + "Рекомендуем начать с умеренных стратегий. Согласны?",
+                    "options": [
+                        "A) Да, начну с умеренного риска",
+                        "B) Нет, готов к высокому риску",
+                    ],
+                }
+            )
+
+        if answers.get(1) == "A" and capital_size == "C":
+            contradictions.append(
+                {
+                    "code": "beginner_large_capital",
+                    "question": "Вы начинающий инвестор с крупным капиталом. "
+                    + "Рекомендуем начать с умеренных стратегий. Согласны?",
+                    "options": [
+                        "A) Да, начну с умеренного риска",
+                        "B) Нет, готов к более агрессивной стратегии",
+                    ],
+                }
+            )
+
+    if answers.get(6) == "A" and answers.get(7) == "C":
         contradictions.append(
             {
                 "code": "low_risk_buy_dip",
@@ -109,7 +180,7 @@ def check_all_contradictions(answers: dict) -> List[Dict]:
             }
         )
 
-    if answers.get(2) == "A" and answers.get(3) == "C":
+    if answers.get(1) == "A" and answers.get(2) == "C":
         contradictions.append(
             {
                 "code": "no_experience_self_management",
@@ -122,79 +193,61 @@ def check_all_contradictions(answers: dict) -> List[Dict]:
             }
         )
 
-    if answers.get(5) == "C" and (answers.get(11) == "A" or answers.get(9) == "A"):
-        contradictions.append(
-            {
-                "code": "large_capital_fear",
-                "question": "При крупном капитале вы отмечаете осторожность. "
-                + "Хотите консервативную стратегию с защитой?",
-                "options": [
-                    "A) Да, сохранение важнее роста",
-                    "B) Нет, готов к умеренному риску",
-                ],
-            }
-        )
-
-    if answers.get(5) == "A" and answers.get(10) == "C":
-        contradictions.append(
-            {
-                "code": "small_capital_high_return",
-                "question": "При небольшом капитале вы ожидаете высокую доходность."
-                + " Рекомендуем начать с умеренных стратегий. Согласны?",
-                "options": [
-                    "A) Да, начну с умеренного риска",
-                    "B) Нет, готов к высокому риску",
-                ],
-            }
-        )
-
-    if answers.get(7) == "C" and answers.get(5) == "A":
-        contradictions.append(
-            {
-                "code": "high_investment_low_capital",
-                "question": "Вы инвестируете значительную долю дохода при небольшом "
-                + "капитале. Уверены, что это не повлияет на финансовую стабильность?",
-                "options": [
-                    "A) Пересмотрю долю инвестиций",
-                    "B) Это комфортный для меня уровень",
-                ],
-            }
-        )
-
     return contradictions
 
 
 def apply_restrictions(
-    conservative: int, moderate: int, aggressive: int, answers_map: dict
+    conservative: int,
+    moderate: int,
+    aggressive: int,
+    answers_map: dict,
+    llm_data: Dict = None,
 ):
-    """Применение ограничивающих условий"""
+    """Применение ограничивающих условий с учетом LLM данных"""
 
-    if answers_map.get(2) == "A":
+    # Нет опыта → максимум умеренный
+    if answers_map.get(1) == "A":
         aggressive = min(aggressive, moderate)
 
-    if answers_map.get(8) == "A":
+    # Просадка ≤ -10% → консервативный
+    if answers_map.get(6) == "A":
         aggressive = 0
         moderate = 0
         conservative = max(conservative, 8)
 
-    if answers_map.get(11) == "A" or answers_map.get(9) == "A":
+    # Страх потерь → консервативный
+    if answers_map.get(9) == "A" or answers_map.get(7) == "A":
         aggressive = 0
         moderate = 0
         conservative = max(conservative, 8)
 
-    if answers_map.get(2) == "A" and answers_map.get(5) == "C":
-        aggressive = min(aggressive, moderate)
+    # Если есть данные из LLM, применяем дополнительные ограничения
+    if llm_data:
+        capital_size = llm_data.get("capital_size")
+        horizon = llm_data.get("horizon")
+
+        # Начинающий + крупный капитал → максимум умеренный
+        if answers_map.get(1) == "A" and capital_size == "C":
+            aggressive = min(aggressive, moderate)
+
+        # Короткий горизонт → максимум умеренный
+        if horizon == "A":
+            aggressive = min(aggressive, moderate)
 
     return conservative, moderate, aggressive
 
 
 def determine_profile_v2(
-    conservative: int, moderate: int, aggressive: int, answers_map: dict
+    conservative: int,
+    moderate: int,
+    aggressive: int,
+    answers_map: dict,
+    llm_data: Dict = None,
 ) -> str:
-    """Определение профиля по новым правилам"""
+    """Определение профиля с учетом LLM данных"""
 
     conservative, moderate, aggressive = apply_restrictions(
-        conservative, moderate, aggressive, answers_map
+        conservative, moderate, aggressive, answers_map, llm_data
     )
 
     if aggressive >= 15:
@@ -205,26 +258,30 @@ def determine_profile_v2(
         return "Умеренный"
 
 
-def calculate_profile_v2(answers: List[RiskAnswer]) -> RiskProfileResult:
+def calculate_profile_v2(
+    answers: List[RiskAnswer], llm_data: Dict = None
+) -> RiskProfileResult:
     """Основной расчет профиля"""
     answers_map = {a.question_id: a.answer.strip()[0].upper() for a in answers}
 
     conservative = moderate = aggressive = 0
 
     scoring = {
-        1: {"A": ("", 0), "B": ("", 0), "C": ("", 0)},
+        # Блок 1 – Опыт и вовлечённость
+        1: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         2: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         3: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
+        # Блок 2 – Финансовое положение
         4: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         5: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
+        # Блок 3 – Отношение к риску
         6: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         7: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         8: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
+        # Блок 4 – Эмоциональная устойчивость
         9: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         10: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
         11: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
-        12: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
-        13: {"A": ("cons", 2), "B": ("mod", 1), "C": ("agr", 3)},
     }
 
     for qid, ans in answers_map.items():
@@ -237,10 +294,15 @@ def calculate_profile_v2(answers: List[RiskAnswer]) -> RiskProfileResult:
             elif prof == "agr":
                 aggressive += val
 
-    profile = determine_profile_v2(conservative, moderate, aggressive, answers_map)
+    profile = determine_profile_v2(
+        conservative, moderate, aggressive, answers_map, llm_data
+    )
 
     horizon_mapping = {"A": "До 3 лет", "B": "3–7 лет", "C": "Более 7 лет"}
     investment_horizon = horizon_mapping.get(answers_map.get(1))
+
+    if llm_data:
+        investment_horizon = horizon_mapping.get(llm_data.get("horizon"))
 
     return RiskProfileResult(
         profile=profile,
@@ -252,7 +314,9 @@ def calculate_profile_v2(answers: List[RiskAnswer]) -> RiskProfileResult:
 
 
 def calculate_profile_v2_with_clarifications(
-    answers: List[RiskAnswer], clarification_answers: List[Dict[str, str]]
+    answers: List[RiskAnswer],
+    clarification_answers: List[Dict[str, str]],
+    llm_data: Dict = None,
 ) -> RiskProfileResult:
     """Расчет профиля с учетом уточняющих ответов"""
     answers_map = {a.question_id: a.answer.strip()[0].upper() for a in answers}
@@ -288,5 +352,5 @@ def calculate_profile_v2_with_clarifications(
 
     # Пересчитываем с обновленными ответами
     return calculate_profile_v2(
-        [RiskAnswer(question_id=k, answer=v) for k, v in answers_map.items()]
+        [RiskAnswer(question_id=k, answer=v) for k, v in answers_map.items()], llm_data
     )

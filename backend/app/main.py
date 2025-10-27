@@ -4,8 +4,8 @@ from app.api.routes_assets import router as assets_router
 from app.api.routes_dialog import router as dialog_router
 from app.api.routes_health import router as health_router
 from app.api.routes_portfolios import router as portfolios_router
-from app.api.routes_user import router as user_router
 from app.api.routes_risk_profile import router as risk_profile_router
+from app.api.routes_user import router as user_router
 
 app = FastAPI(title="My Project", version="0.1.0")
 

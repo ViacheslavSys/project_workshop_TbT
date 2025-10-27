@@ -32,3 +32,10 @@ class ClarificationQuestion(BaseModel):
     code: str
     question: str
     options: List[str]
+
+
+class LLMGoalData(BaseModel):
+    term: float
+    sum: float
+    reason: str
+    capital: float
