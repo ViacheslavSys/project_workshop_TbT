@@ -2,11 +2,7 @@ import { NavLink } from "react-router-dom";
 
 type Props = { onNavigate?: () => void };
 
-const nav = [
-  { to: "/", label: "Р“Р»Р°РІРЅР°СЏ" },
-  { to: "/chat", label: "Р§Р°С‚-РїРѕРјРѕС‰РЅРёРє"},
-  { to: "/portfolios", label: "РџРѕСЂС‚С„РµР»Рё"},
-];
+const nav = [\n  { to: "/portfolios", label: "Портфели" },\n  { to: "/chat", label: "Чат" },\n  { to: "/account", label: "Личный кабинет" },\n  { to: "/auth", label: "Вход / Регистрация" },\n];
 
 export default function Sidebar({ onNavigate }: Props) {
   return (
@@ -37,3 +33,4 @@ export default function Sidebar({ onNavigate }: Props) {
     </div>
   );
 }
+

@@ -1,5 +1,14 @@
 import { Link } from "react-router-dom";
 import { samplePortfolios } from "../data/samplePortfolios";
+import InfoTip from "../components/InfoTip";
+
+function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
+function colorFor(v: number, min: number, max: number, invert = false) {
+  const t = clamp((v - min) / (max - min || 1), 0, 1);
+  const p = invert ? 1 - t : t;
+  const hue = 120 * p; // 0 red -> 120 green
+  return `hsl(${hue} 70% 55%)`;
+}
 
 function Sparkline({ data }: { data: number[] }) {
   const w = 120, h = 36, pad = 4;
@@ -17,38 +26,60 @@ function Sparkline({ data }: { data: number[] }) {
 export default function PortfolioPage(){
   return (
     <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-      {samplePortfolios.map(p => (
-        <Link key={p.id} to={`/portfolios/${p.id}`} className="card block hover:opacity-95 transition">
-          <div className="card-body">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h3 className="text-lg font-semibold">{p.name}</h3>
-                <p className="text-xs text-muted mt-0.5">Риск: {p.riskLevel}</p>
+      {samplePortfolios.map(p => {
+        const maxAlloc = Math.max(...p.assets.map(a=>a.allocation));
+        const topAssets = [...p.assets].sort((a,b)=>b.allocation-a.allocation).slice(0,3);
+        const riskColor = p.riskLevel === 'Low' ? 'hsl(120 60% 45%)' : p.riskLevel === 'Moderate' ? 'hsl(60 70% 55%)' : 'hsl(10 80% 55%)';
+        return (
+          <Link key={p.id} to={`/portfolios/${p.id}`} className="card block hover:opacity-95 transition-transform duration-200 hover:-translate-y-0.5">
+            <div className="card-body">
+              <div className="h-1 w-full rounded bg-gradient-to-r from-success/60 via-primary/60 to-danger/60 opacity-60 mb-3" />
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h3 className="text-lg font-semibold">{p.name}</h3>
+                  <p className="text-xs text-muted mt-0.5 flex items-center gap-1">
+                    Риск-профиль: <span className="px-1.5 py-0.5 rounded border border-border" style={{ background: 'rgba(255,255,255,.06)', color: riskColor }}>{p.riskLevel}</span>
+                    <InfoTip title="Риск-профиль">Общая склонность инвестора к риску (низкий, умеренный, высокий) на основе опроса и/или данных.</InfoTip>
+                  </p>
+                </div>
+                <span className="text-xs px-2 py-1 rounded-lg bg-white/5 border border-border">Обзор</span>
               </div>
-              <span className="text-xs px-2 py-1 rounded-lg bg-white/5 border border-border">Активен</span>
-            </div>
 
-            <div className="flex items-end justify-between">
-              <div>
-                <div className="text-2xl font-bold">${p.totalValue.toLocaleString()}</div>
-                <div className="text-sm text-success">{(p.expectedReturn*100).toFixed(1)}%</div>
+              <div className="flex items-end justify-between">
+                <div>
+                  <div className="text-2xl font-bold">${p.totalValue.toLocaleString()}</div>
+                  <div className="text-sm tabular-nums" style={{ color: colorFor(p.expectedReturn, 0, 0.2) }}>
+                    {(p.expectedReturn*100).toFixed(1)}% <span className="text-muted">ожид. дох.</span>
+                    <InfoTip title="Ожидаемая доходность">Среднегодовой прогноз доходности портфеля на горизонте, не гарантирован.</InfoTip>
+                  </div>
+                </div>
+                <Sparkline data={p.sparkline} />
               </div>
-              <Sparkline data={p.sparkline} />
-            </div>
 
-            <div className="mt-4">
-              <div className="flex justify-between text-xs text-muted mb-1">
-                <span>Топ-актив</span>
-                <span>{Math.max(...p.assets.map(a=>a.allocation))*100}%</span>
+              <div className="mt-4">
+                <div className="flex justify-between text-xs text-muted mb-1">
+                  <span>Крупнейшая доля<InfoTip title="Крупнейшая доля">Максимальная доля одного актива в портфеле.</InfoTip></span>
+                  <span className="tabular-nums">{(maxAlloc*100).toFixed(1)}%</span>
+                </div>
+                <div className="w-full h-2 bg-white/10 rounded overflow-hidden">
+                  <div className="h-2 bg-primary rounded" style={{width:`${maxAlloc*100}%`}}/>
+                </div>
+                <div className="text-xs text-muted mt-1 flex items-center gap-1">
+                  Sharpe: <span className="tabular-nums" style={{ color: colorFor(p.metrics.sharpeRatio, 0, 1.6) }}>{p.metrics.sharpeRatio.toFixed(2)}</span>
+                  <InfoTip title="Sharpe Ratio">Показывает соотношение доходности к риску. Выше — лучше.</InfoTip>
+                </div>
+                <div className="mt-2 flex gap-1 flex-wrap">
+                  {topAssets.map(a => (
+                    <span key={a.ticker} className="text-xs px-2 py-0.5 rounded bg-white/5 border border-border">
+                      {a.ticker} <span className="tabular-nums">{(a.allocation*100).toFixed(0)}%</span>
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div className="w-full h-2 bg-white/10 rounded overflow-hidden">
-                <div className="h-2 bg-primary rounded" style={{width:`${Math.max(...p.assets.map(a=>a.allocation))*100}%`}}/>
-              </div>
-              <div className="text-xs text-muted mt-1">Шарп: {p.metrics.sharpeRatio.toFixed(2)}</div>
             </div>
-          </div>
-        </Link>
-      ))}
+          </Link>
+        );
+      })}
     </div>
   );
 }

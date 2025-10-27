@@ -17,6 +17,7 @@
 .input { @apply w-full bg-black/20 border border-border rounded-xl px-3 py-2 text-sm placeholder:text-muted; }
 .tab { @apply px-3 py-1.5 rounded-lg text-sm text-muted hover:text-text hover:bg-white/5 transition; }
 .tab-active { @apply bg-white/10 text-text; }
+.tabular-nums { font-variant-numeric: tabular-nums; }
 
 /* Chatbot kit tiny dark tune-ups */
 .react-chatbot-kit-chat-container { background: transparent; border: 1px solid var(--border); border-radius: var(--radius); }
