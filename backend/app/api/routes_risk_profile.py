@@ -75,10 +75,7 @@ def submit_answers(user_id: str, answers: list[RiskAnswer]):
 
 
 @router.post("/clarify")
-def clarify_profile(
-    user_id: str,
-    clarification_answers: List[Dict[str, str]]
-):
+def clarify_profile(user_id: str, clarification_answers: List[Dict[str, str]]):
     """
     Принимает ВСЕ ответы на уточняющие вопросы и выдает финальный результат
     """

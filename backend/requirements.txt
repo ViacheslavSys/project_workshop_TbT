@@ -29,3 +29,6 @@ python-dotenv
 openai
 
 pydantic
+celery
+bs4
+asyncpg
