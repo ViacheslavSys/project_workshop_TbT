@@ -1,6 +1,34 @@
-const API_BASE =
-  (import.meta as any)?.env?.VITE_API_URL?.replace(/\/+$/, "") ||
-  "http://localhost:8000";
+const API_BASE = (() => {
+  const configured = (import.meta as any)?.env?.VITE_API_URL;
+  if (configured) return String(configured).replace(/\/+$/, "");
+  if (import.meta.env?.DEV) return "/api";
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
+})();
+
+function buildUrl(
+  path: string,
+  params?: Record<string, string | undefined>,
+): string {
+  const sanitizedPath = path.startsWith("/") ? path : `/${path}`;
+  const base = API_BASE.replace(/\/+$/, "");
+  const raw = `${base}${sanitizedPath}` || sanitizedPath;
+  const isAbsolute = /^https?:\/\//i.test(raw);
+  const url = isAbsolute
+    ? new URL(raw)
+    : new URL(
+        raw,
+        typeof window !== "undefined" ? window.location.origin : "http://localhost",
+      );
+
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) url.searchParams.set(key, value);
+    });
+  }
+
+  return url.toString();
+}
 
 type ChatBackendResponse = { response: string };
 
@@ -23,7 +51,7 @@ export async function sendChatText(userId: string, message: string) {
   form.append("user_id", userId);
   form.append("message", message);
 
-  const res = await fetch(`${API_BASE}/dialog/chat`, {
+  const res = await fetch(buildUrl("/dialog/chat"), {
     method: "POST",
     body: form,
   });
@@ -45,7 +73,7 @@ export async function sendChatAudio(
     filename.endsWith(".webm") ? filename : `${filename}.webm`,
   );
 
-  const res = await fetch(`${API_BASE}/dialog/chat`, {
+  const res = await fetch(buildUrl("/dialog/chat"), {
     method: "POST",
     body: form,
   });
@@ -92,9 +120,9 @@ export type RiskAnswersResponse =
     };
 
 export async function fetchRiskQuestions(userId?: string) {
-  const url = new URL(`${API_BASE}/risk-profile/questions`);
-  if (userId) url.searchParams.set("user_id", userId);
-  const res = await fetch(url.toString());
+  const res = await fetch(
+    buildUrl("/risk-profile/questions", userId ? { user_id: userId } : undefined),
+  );
   return handleResponse<RiskQuestion[]>(res);
 }
 
@@ -102,13 +130,14 @@ export async function submitRiskAnswers(
   userId: string,
   answers: RiskAnswerPayload[],
 ) {
-  const url = new URL(`${API_BASE}/risk-profile/answers`);
-  url.searchParams.set("user_id", userId);
-  const res = await fetch(url.toString(), {
+  const res = await fetch(
+    buildUrl("/risk-profile/answers", { user_id: userId }),
+    {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(answers),
-  });
+    },
+  );
   return handleResponse<RiskAnswersResponse>(res);
 }
 
@@ -116,33 +145,30 @@ export async function clarifyRiskProfile(
   userId: string,
   clarifications: Array<{ code: string; answer: string }>,
 ) {
-  const url = new URL(`${API_BASE}/risk-profile/clarify`);
-  url.searchParams.set("user_id", userId);
-  const res = await fetch(url.toString(), {
+  const res = await fetch(
+    buildUrl("/risk-profile/clarify", { user_id: userId }),
+    {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(clarifications),
-  });
+    },
+  );
   return handleResponse<RiskAnswersResponse>(res);
 }
 
 export async function fetchRiskResult(userId: string) {
-  const url = new URL(`${API_BASE}/risk-profile/result`);
-  url.searchParams.set("user_id", userId);
-  const res = await fetch(url.toString());
+  const res = await fetch(buildUrl("/risk-profile/result", { user_id: userId }));
   return handleResponse<RiskProfileResult>(res);
 }
 
-export function getAnonymousUserId() {
-  const storageKey = "anon_user_id";
-  try {
-    const existing = window.localStorage.getItem(storageKey);
-    if (existing) return existing;
-    const generated = crypto.randomUUID();
-    window.localStorage.setItem(storageKey, generated);
-    return generated;
-  } catch {
-    return crypto.randomUUID();
-  }
-}
+let cachedAnonId: string | null = null;
 
+export function getAnonymousUserId() {
+  if (cachedAnonId) return cachedAnonId;
+  try {
+    cachedAnonId = crypto.randomUUID();
+  } catch {
+    cachedAnonId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+  return cachedAnonId;
+}

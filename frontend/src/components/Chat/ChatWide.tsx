@@ -15,7 +15,6 @@ import {
 import { type RootState } from "../../store/store";
 import {
   pushMessage,
-  setMessages,
   setStage,
   setTyping,
 } from "../../store/chatSlice";
@@ -64,7 +63,6 @@ export default function ChatWide() {
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
 
   const listRef = useRef<HTMLDivElement | null>(null);
-  const hydratedRef = useRef(false);
   const userIdRef = useRef<string>("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recorderChunksRef = useRef<BlobPart[]>([]);
@@ -77,28 +75,6 @@ export default function ChatWide() {
     if (!listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [messages, typing]);
-
-  useEffect(() => {
-    if (hydratedRef.current) return;
-    hydratedRef.current = true;
-    try {
-      const raw = sessionStorage.getItem("chat_history");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) dispatch(setMessages(parsed));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [dispatch]);
-
-  useEffect(() => {
-    try {
-      sessionStorage.setItem("chat_history", JSON.stringify(messages));
-    } catch {
-      /* ignore */
-    }
-  }, [messages]);
 
   const appendMessage = useCallback(
     (sender: MessageSender, type: string, content: unknown) => {

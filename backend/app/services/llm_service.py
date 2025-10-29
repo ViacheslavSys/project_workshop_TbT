@@ -9,11 +9,11 @@ dotenv.load_dotenv()
 
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
+    api_key="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",
 )
 
 
-MODEL = os.getenv("MODEL")
+MODEL = "tngtech/deepseek-r1t2-chimera:free@preset/deep-seek-r1-t2"
 
 
 def send_to_llm(user_id: str, user_message: str) -> str:
