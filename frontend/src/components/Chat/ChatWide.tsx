@@ -33,6 +33,8 @@ type RiskResponsePayload =
   | { kind: "question"; questionId: number; answers: string[]; text: string }
   | { kind: "clarification"; code: string; answers: string[]; text: string };
 
+const INITIAL_BOT_MESSAGE =
+  "Привет! Расскажите, для какой цели вы копите капитал — например, на жильё, пассивный доход или образование. Это поможет подобрать оптимальный инвестиционный портфель.";
 const steps = [
   { id: "goals" as const, label: "Цель по SMART" },
   { id: "risk" as const, label: "Риск-профиль" },
@@ -64,6 +66,7 @@ export default function ChatWide() {
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const userIdRef = useRef<string>("");
+  const initialMessageRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recorderChunksRef = useRef<BlobPart[]>([]);
 
@@ -90,6 +93,16 @@ export default function ChatWide() {
     },
     [dispatch],
   );
+
+  useEffect(() => {
+    if (initialMessageRef.current) return;
+    if (messages.length > 0) {
+      initialMessageRef.current = true;
+      return;
+    }
+    appendMessage("ai", "message", INITIAL_BOT_MESSAGE);
+    initialMessageRef.current = true;
+  }, [messages, appendMessage]);
 
   const handleSend = async () => {
     const text = draft.trim();
