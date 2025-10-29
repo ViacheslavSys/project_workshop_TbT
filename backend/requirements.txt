@@ -31,4 +31,3 @@ openai
 pydantic
 celery
 bs4
-asyncpg
