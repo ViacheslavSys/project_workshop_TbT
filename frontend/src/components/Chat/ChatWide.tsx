@@ -1,160 +1,446 @@
-import React, { useEffect, useRef, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { type RootState } from "../../store/store";
-import { useWebSocket } from "../../hooks/useWebSocket";
-import { setMessages } from "../../store/chatSlice";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  clarifyRiskProfile,
+  fetchRiskQuestions,
+  getAnonymousUserId,
+  sendChatAudio,
+  sendChatText,
+  submitRiskAnswers,
+  type RiskClarifyingQuestion,
+  type RiskQuestion,
+  type RiskProfileResult,
+} from "../../api/chat";
+import { type RootState } from "../../store/store";
+import {
+  pushMessage,
+  setStage,
+  setTyping,
+} from "../../store/chatSlice";
+
+type MessageSender = "user" | "ai";
+
+type RiskQuestionMessagePayload = {
+  id: number | null;
+  text: string;
+  options: Array<{ id: string; label: string; value: string }>;
+  clarificationCode?: string;
+  allowMultiple?: boolean;
+};
+
+type RiskResponsePayload =
+  | { kind: "question"; questionId: number; answers: string[]; text: string }
+  | { kind: "clarification"; code: string; answers: string[]; text: string };
+
+const INITIAL_BOT_MESSAGE =
+  "Привет! Расскажите, для какой цели вы копите капитал — например, на жильё, пассивный доход или образование. Это поможет подобрать оптимальный инвестиционный портфель.";
+const steps = [
+  { id: "goals" as const, label: "Цель по SMART" },
+  { id: "risk" as const, label: "Риск-профиль" },
+  { id: "portfolio" as const, label: "Инвестпортфель" },
+];
 
 function classNames(...cls: Array<string | false | null | undefined>) {
   return cls.filter(Boolean).join(" ");
 }
 
-const WS_URL = (import.meta as any).env?.VITE_WS_URL || "ws://localhost:8000/ws";
-const steps = [
-  { id: "goals", label: "Определение целей" },
-  { id: "risk", label: "Риск‑профиль" },
-  { id: "portfolio", label: "Создание портфеля" },
-] as const;
-
 export default function ChatWide() {
   const dispatch = useDispatch();
-  const { messages, typing, stage, isAuth } = useSelector((s: RootState) => ({
-    messages: s.chat.messages,
-    typing: s.chat.typing,
-    stage: s.chat.stage,
-    isAuth: s.auth.isAuthenticated,
+  const { messages, typing, stage, isAuth } = useSelector((state: RootState) => ({
+    messages: state.chat.messages,
+    typing: state.chat.typing,
+    stage: state.chat.stage,
+    isAuth: state.auth.isAuthenticated,
   }));
 
-  const { sendMessage } = useWebSocket(WS_URL);
-
   const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
+  const [pending, setPending] = useState(false);
+  const [riskQuestions, setRiskQuestions] = useState<RiskQuestion[]>([]);
+  const [riskAnswers, setRiskAnswers] = useState<Record<number, string>>({});
+  const [currentRiskIndex, setCurrentRiskIndex] = useState<number>(-1);
+  const [clarifyingQuestions, setClarifyingQuestions] = useState<RiskClarifyingQuestion[]>([]);
+  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
+
   const listRef = useRef<HTMLDivElement | null>(null);
-  const hydratedRef = useRef(false);
+  const userIdRef = useRef<string>("");
+  const initialMessageRef = useRef(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recorderChunksRef = useRef<BlobPart[]>([]);
+
+  useEffect(() => {
+    userIdRef.current = getAnonymousUserId();
+  }, []);
 
   useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [messages, typing]);
 
-  // Ре-гидратация истории из sessionStorage
-  useEffect(() => {
-    if (hydratedRef.current) return;
-    hydratedRef.current = true;
-    try {
-      const raw = sessionStorage.getItem("chat_history");
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) dispatch(setMessages(arr));
-      }
-    } catch {}
-  }, [dispatch]);
+  const appendMessage = useCallback(
+    (sender: MessageSender, type: string, content: unknown) => {
+      dispatch(
+        pushMessage({
+          id: crypto.randomUUID(),
+          sender,
+          type,
+          content,
+          ts: Date.now(),
+        }),
+      );
+    },
+    [dispatch],
+  );
 
-  // Сохранение истории
   useEffect(() => {
-    try { sessionStorage.setItem("chat_history", JSON.stringify(messages)); } catch {}
-  }, [messages]);
-
-  const handleSend = () => {
-    const text = draft.trim();
-    if (!text) return;
-    if (text === "/risk") {
-      sendMessage({}, "start_risk");
-      setDraft("");
+    if (initialMessageRef.current) return;
+    if (messages.length > 0) {
+      initialMessageRef.current = true;
       return;
     }
-    sendMessage(text, "message");
+    appendMessage("ai", "message", INITIAL_BOT_MESSAGE);
+    initialMessageRef.current = true;
+  }, [messages, appendMessage]);
+
+  const handleSend = async () => {
+    const text = draft.trim();
+    if (!text) return;
+    const userId = userIdRef.current || getAnonymousUserId();
+    userIdRef.current = userId;
+
+    appendMessage("user", "message", text);
     setDraft("");
+    setError(null);
+    dispatch(setTyping(true));
+
+    try {
+      const response = await sendChatText(userId, text);
+      appendMessage("ai", "message", response);
+      dispatch(setStage("goals"));
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Не удалось получить ответ от ассистента";
+      appendMessage("ai", "message", `Ошибка: ${message}`);
+      setError(message);
+    } finally {
+      dispatch(setTyping(false));
+    }
   };
 
   const startRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
-    mediaRecorderRef.current = mr;
-    chunksRef.current = [];
-    mr.ondataavailable = (e) => e.data && chunksRef.current.push(e.data);
-    mr.onstop = async () => {
-      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-      const base64 = await blobToBase64(blob);
-      sendMessage({ mime: "audio/webm", data: base64 }, "audio");
-      setIsRecording(false);
-    };
-    mr.start();
-    setIsRecording(true);
+    if (isRecording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      mediaRecorderRef.current = recorder;
+      recorderChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) recorderChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = async () => {
+        const userId = userIdRef.current || getAnonymousUserId();
+        userIdRef.current = userId;
+        const blob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
+        if (!blob.size) {
+          setIsRecording(false);
+          return;
+        }
+        const base64 = await blobToBase64(blob);
+        appendMessage("user", "audio", { mime: blob.type, data: base64 });
+        dispatch(setTyping(true));
+        setError(null);
+        try {
+          const response = await sendChatAudio(userId, blob);
+          appendMessage("ai", "message", response);
+          dispatch(setStage("goals"));
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Не удалось обработать голосовое сообщение";
+          appendMessage("ai", "message", `Ошибка: ${message}`);
+          setError(message);
+        } finally {
+          dispatch(setTyping(false));
+          setIsRecording(false);
+        }
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Не удалось включить запись голоса";
+      appendMessage("ai", "message", `Ошибка: ${message}`);
+      setError(message);
+    }
   };
-  const stopRecording = () => mediaRecorderRef.current?.stop();
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+  };
+
+  const mapRiskQuestionToPayload = (
+    question: RiskQuestion,
+  ): RiskQuestionMessagePayload => ({
+    id: question.id,
+    text: question.text,
+    options: question.options.map((option, idx) => {
+      const match = option.match(/^\s*([A-Za-zА-Яа-я])\)/);
+      const value = match ? match[1].toUpperCase() : String.fromCharCode(65 + idx);
+      const cleaned = option.replace(/^\s*[A-Za-zА-Яа-я]\)\s*/, "").trim();
+      return {
+        id: `${question.id}_${idx}`,
+        label: cleaned || option,
+        value,
+      };
+    }),
+    allowMultiple: false,
+  });
+
+  const mapClarifyingQuestion = (
+    question: RiskClarifyingQuestion,
+  ): RiskQuestionMessagePayload => ({
+    id: null,
+    text: question.question,
+    clarificationCode: question.code,
+    options: question.options.map((option, idx) => {
+      const match = option.match(/^\s*([A-Za-zА-Яа-я])\)/);
+      const value = match ? match[1].toUpperCase() : String.fromCharCode(65 + idx);
+      const cleaned = option.replace(/^\s*[A-Za-zА-Яа-я]\)\s*/, "").trim();
+      return {
+        id: `${question.code}_${idx}`,
+        label: cleaned || option,
+        value,
+      };
+    }),
+    allowMultiple: false,
+  });
+
+  const enqueueRiskQuestion = (payload: RiskQuestionMessagePayload) => {
+    appendMessage("ai", "risk_question", payload);
+  };
+
+  const handleStartRisk = async () => {
+    const userId = userIdRef.current || getAnonymousUserId();
+    userIdRef.current = userId;
+    setError(null);
+    setPending(true);
+    dispatch(setStage("risk"));
+    appendMessage("ai", "message", "Запускаю тестирование на риск-профиль.");
+    try {
+      const questions = await fetchRiskQuestions(userId);
+      if (!questions.length) {
+        appendMessage("ai", "message", "Пока нет доступных вопросов для теста.");
+        setPending(false);
+        return;
+      }
+      setRiskQuestions(questions);
+      setRiskAnswers({});
+      setCurrentRiskIndex(0);
+      setClarifyingQuestions([]);
+      setClarificationAnswers({});
+      enqueueRiskQuestion(mapRiskQuestionToPayload(questions[0]));
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Не удалось загрузить вопросы теста";
+      appendMessage("ai", "message", `Ошибка: ${message}`);
+      setError(message);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const finalizeRiskAnswers = async (answers: Record<number, string>) => {
+    const userId = userIdRef.current || getAnonymousUserId();
+    userIdRef.current = userId;
+    dispatch(setTyping(true));
+    setPending(true);
+    setError(null);
+
+    try {
+      const payload = Object.entries(answers).map(([questionId, answer]) => ({
+        question_id: Number(questionId),
+        answer,
+      }));
+      const result = await submitRiskAnswers(userId, payload);
+      if (result.stage === "clarification_needed") {
+        setClarifyingQuestions(result.clarifying_questions);
+        setClarificationAnswers({});
+        result.clarifying_questions.forEach((clarifying) => {
+          enqueueRiskQuestion(mapClarifyingQuestion(clarifying));
+        });
+      } else {
+        handleRiskResult(result.result);
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Не удалось рассчитать риск-профиль";
+      appendMessage("ai", "message", `Ошибка: ${message}`);
+      setError(message);
+    } finally {
+      dispatch(setTyping(false));
+      setPending(false);
+    }
+  };
+
+  const finalizeClarifications = async (answers: Record<string, string>) => {
+    const userId = userIdRef.current || getAnonymousUserId();
+    userIdRef.current = userId;
+
+    dispatch(setTyping(true));
+    setPending(true);
+    setError(null);
+
+    try {
+      const payload = Object.entries(answers).map(([code, answer]) => ({
+        code,
+        answer,
+      }));
+      const result = await clarifyRiskProfile(userId, payload);
+      if (result.stage === "final") {
+        handleRiskResult(result.result);
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Не удалось учесть уточняющие ответы";
+      appendMessage("ai", "message", `Ошибка: ${message}`);
+      setError(message);
+    } finally {
+      dispatch(setTyping(false));
+      setPending(false);
+    }
+  };
+
+  const handleRiskResult = (result: RiskProfileResult) => {
+    appendMessage("ai", "risk_result", result);
+    dispatch(setStage("portfolio"));
+    appendMessage(
+      "ai",
+      "message",
+      "На основе вашего риск-профиля мы подготовим инвестиционный портфель и покажем его в следующем блоке чата.",
+    );
+  };
+
+  const handleRiskAnswer = async (payload: RiskResponsePayload) => {
+    if (!payload.answers.length) return;
+
+    appendMessage(
+      "user",
+      "message",
+      `Мой выбор: ${payload.text || payload.answers.join(", ")}`,
+    );
+
+    if (payload.kind === "clarification") {
+      const updated = { ...clarificationAnswers, [payload.code]: payload.answers[0] };
+      setClarificationAnswers(updated);
+      const totalClarifications = clarifyingQuestions.length;
+      if (Object.keys(updated).length === totalClarifications && totalClarifications > 0) {
+        await finalizeClarifications(updated);
+      }
+      return;
+    }
+
+    const updatedAnswers = { ...riskAnswers, [payload.questionId]: payload.answers[0] };
+    setRiskAnswers(updatedAnswers);
+
+    const nextIndex = currentRiskIndex + 1;
+    if (nextIndex < riskQuestions.length) {
+      setCurrentRiskIndex(nextIndex);
+      enqueueRiskQuestion(mapRiskQuestionToPayload(riskQuestions[nextIndex]));
+    } else {
+      await finalizeRiskAnswers(updatedAnswers);
+    }
+  };
 
   return (
     <div className="card">
       <div className="card-header flex items-center justify-between">
-        <div>Chat Assistant</div>
-        {typing && <div className="text-xs text-muted">Assistant is typing...</div>}
+        <div>ИИ-помощник</div>
+        {typing ? (
+          <div className="text-xs text-muted">Ассистент думает…</div>
+        ) : null}
       </div>
       <div className="card-body">
         <div className="flex gap-4">
-          {/* Боковое меню этапов */}
-          <aside className="w-56 hidden md:block bg-white/5 border border-border rounded-2xl p-3">
-            <div className="text-xs text-muted mb-2">Этапы</div>
+          <aside className="hidden w-56 rounded-2xl border border-border bg-white/5 p-3 md:block">
+            <div className="mb-2 text-xs text-muted">Этапы</div>
             <nav className="space-y-1">
-              {steps.map((st) => (
+              {steps.map((item) => (
                 <button
-                  key={st.id}
+                  key={item.id}
                   className={classNames(
-                    "w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 transition",
-                    stage === st.id ? "bg-white/10 text-text" : "text-muted"
+                    "w-full rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/5",
+                    stage === item.id ? "bg-white/10 text-text" : "text-muted",
                   )}
-                  onClick={() => { if (st.id === "risk") sendMessage({}, "start_risk"); }}
+                  onClick={() => {
+                    if (item.id === "risk") handleStartRisk();
+                    if (item.id === "goals") dispatch(setStage("goals"));
+                  }}
+                  disabled={pending && item.id === "risk"}
                 >
-                  {st.label}
+                  {item.label}
                 </button>
               ))}
             </nav>
           </aside>
 
-          {/* Столбец чата */}
-          <div className="flex-1 flex flex-col h-[70vh]">
+          <div className="flex h-[70vh] flex-1 flex-col">
             <div ref={listRef} className="flex-1 overflow-y-auto pr-1">
               <div className="flex flex-col gap-2">
-                {messages.map((m) => (
+                {messages.map((message) => (
                   <MessageBubble
-                    key={m.id}
-                    sender={m.sender}
-                    type={m.type}
-                    content={m.content}
+                    key={message.id}
+                    sender={message.sender}
+                    type={message.type}
+                    content={message.content}
                     isAuth={isAuth}
-                    onRiskAnswer={(qid, answers)=>sendMessage({ questionId: qid, answers }, "risk_answer", { echo: false })}
+                    onRiskAnswer={handleRiskAnswer}
                   />
                 ))}
+                {typing ? (
+                  <div className="animate-pulse text-xs text-muted">
+                    Ассистент печатает...
+                  </div>
+                ) : null}
               </div>
             </div>
 
-            {stage !== "risk" && (
-              <div className="mt-3 flex items-end gap-2">
-                <button
-                  aria-label={isRecording ? "Stop recording" : "Start recording"}
-                  onClick={isRecording ? stopRecording : startRecording}
-                  className={classNames(
-                    "h-11 w-11 rounded-full border border-border grid place-items-center",
-                    isRecording ? "bg-danger/30 text-danger" : "bg-black/20 text-muted hover:text-text"
-                  )}
-                >
-                  {isRecording ? "■" : "🎤"}
-                </button>
-
-                <textarea
-                  placeholder='Type your message... (или введите "/risk")'
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  rows={2}
-                  className="input min-h-10 max-h-36 flex-1 resize-y"
-                />
-
-                <button onClick={handleSend} className="btn">Send</button>
+            {error ? (
+              <div className="mt-2 text-xs text-danger">
+                {error}. Попробуйте еще раз или обновите страницу.
               </div>
-            )}
+            ) : null}
+
+            <div className="mt-3 flex items-center gap-2">
+              <button className="tab text-sm" onClick={handleStartRisk} disabled={pending}>
+                Пройти тест на риск-профиль
+              </button>
+            </div>
+
+            <div className="mt-3 flex items-end gap-2">
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                rows={2}
+                className="flex-1 resize-none rounded-xl border border-border bg-white/5 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="Опишите вашу инвестиционную цель..."
+              />
+              <button className="btn" onClick={handleSend} disabled={!draft.trim()}>
+                Отправить
+              </button>
+              <button
+                className={classNames(
+                  "btn-secondary",
+                  isRecording ? "opacity-80" : undefined,
+                )}
+                onClick={() => (isRecording ? stopRecording() : startRecording())}
+              >
+                {isRecording ? "Остановить" : "Голос"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -162,75 +448,183 @@ export default function ChatWide() {
   );
 }
 
-function MessageBubble({ sender, type, content, isAuth, onRiskAnswer }: { sender: "user" | "ai"; type: string; content: unknown; isAuth?: boolean; onRiskAnswer?: (qid:string, answers:string[])=>void }) {
+function MessageBubble({
+  sender,
+  type,
+  content,
+  isAuth,
+  onRiskAnswer,
+}: {
+  sender: MessageSender;
+  type: string;
+  content: unknown;
+  isAuth: boolean;
+  onRiskAnswer?: (payload: RiskResponsePayload) => void;
+}) {
   const isUser = sender === "user";
   let body: React.ReactNode;
-  if (type === "risk_questions" && content && typeof content === "object") {
-    body = <RiskFormMessage payload={content as any} onSubmit={onRiskAnswer}/>;
-  } else if (type === "risk_result" && content && typeof content === "object") {
-    body = <RiskResultMessage payload={content as any} />;
-  } else if (type === "portfolio_recommendation" && content && typeof content === "object") {
-    const p = (content as any).portfolio || (content as any);
-    body = <PortfolioMessage portfolio={p} isAuth={!!isAuth} />;
-  } else if (type === "audio" && content && typeof content === "object" && (content as any).data) {
-    const c = content as { data: string; mime?: string };
-    const src = `data:${c.mime || "audio/webm"};base64,${c.data}`;
-    body = <audio controls src={src} className="max-w-full" />;
+
+  if (type === "risk_question" && !isUser) {
+    body = (
+      <RiskFormMessage
+        payload={content as RiskQuestionMessagePayload}
+        onSubmit={onRiskAnswer}
+      />
+    );
+  } else if (type === "risk_result" && !isUser) {
+    body = <RiskResultMessage result={content as RiskProfileResult} />;
+  } else if (type === "portfolio_recommendation" && !isUser) {
+    body = <PortfolioMessage portfolio={content} isAuth={isAuth} />;
+  } else if (type === "audio") {
+    const audio = content as { data?: string; mime?: string };
+    const src = audio?.data
+      ? `data:${audio.mime || "audio/webm"};base64,${audio.data}`
+      : undefined;
+    body = src ? (
+      <audio controls className="max-w-full" src={src} />
+    ) : (
+      <div className="text-xs text-muted">Аудио недоступно</div>
+    );
   } else {
-    const text = typeof content === "string" ? content : JSON.stringify(content);
-    body = <div className="whitespace-pre-wrap break-words">{text}</div>;
+    const text =
+      typeof content === "string"
+        ? content
+        : JSON.stringify(content, null, 2);
+    body = <div className="whitespace-pre-wrap break-words text-sm">{text}</div>;
   }
+
   return (
-    <div className={classNames("flex", isUser ? "justify-end" : "justify-start")}> 
-      <div className={classNames("max-w-[80%] px-3 py-2 rounded-xl border", isUser ? "bg-primary/15 border-transparent" : "bg-white/5 border-border")}>
+    <div className={classNames("flex", isUser ? "justify-end" : "justify-start")}>
+      <div
+        className={classNames(
+          "max-w-[80%] rounded-xl border px-3 py-2",
+          isUser ? "bg-primary/15 border-transparent" : "bg-white/5 border-border",
+        )}
+      >
         {body}
       </div>
     </div>
   );
 }
 
-function RiskFormMessage({ payload, onSubmit }:{ payload: any; onSubmit?: (qid: string, answers: string[])=>void }){
-  const q = Array.isArray(payload?.questions) && payload.questions.length ? payload.questions[0] : undefined;
-  const [checked, setChecked] = useState<string[]>([]);
-  if (!q) return <div className="text-sm text-muted">Нет доступных вопросов.</div>;
-  const toggle = (id:string) => {
-    setChecked(prev => {
-      if (q.multiSelect) return prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id];
-      return prev.includes(id) ? [] : [id];
+function RiskFormMessage({
+  payload,
+  onSubmit,
+}: {
+  payload: RiskQuestionMessagePayload;
+  onSubmit?: (payload: RiskResponsePayload) => void;
+}) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    setSelected([]);
+    setSubmitted(false);
+  }, [payload.id, payload.clarificationCode]);
+
+  if (!payload) {
+    return <div className="text-sm text-muted">Вопрос недоступен.</div>;
+  }
+
+  const allowMultiple = !!payload.allowMultiple;
+
+  const toggle = (value: string) => {
+    setSelected((prev) => {
+      if (allowMultiple) {
+        return prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value];
+      }
+      return prev.includes(value) ? [] : [value];
     });
   };
+
+  const handleSubmit = () => {
+    if (!selected.length || submitted) return;
+    const selectedLabels = payload.options
+      .filter((option) => selected.includes(option.value))
+      .map((option) => option.label)
+      .join(", ");
+    setSubmitted(true);
+    if (payload.clarificationCode) {
+      onSubmit?.({
+        kind: "clarification",
+        code: payload.clarificationCode,
+        answers: selected,
+        text: selectedLabels,
+      });
+    } else if (payload.id !== null) {
+      onSubmit?.({
+        kind: "question",
+        questionId: payload.id,
+        answers: selected,
+        text: selectedLabels,
+      });
+    }
+  };
+
   return (
-    <div>
-      <div className="font-medium mb-2">{q.question || "Выберите вариант"}</div>
+    <div className="space-y-3">
+      <div>
+        <div className="text-xs uppercase text-muted">
+          {payload.clarificationCode ? "Уточняющий вопрос" : "Вопрос теста"}
+        </div>
+        <div className="mt-1 text-sm font-medium">{payload.text}</div>
+      </div>
       <div className="space-y-2">
-        {q.options?.map((opt:any)=> (
-          <label key={opt.id} className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="accent-blue-500" checked={checked.includes(opt.id)} onChange={()=>toggle(opt.id)} />
-            <span>{opt.text}</span>
+        {payload.options.map((option) => (
+          <label key={option.id} className="flex items-center gap-2 text-sm">
+            <input
+              type={allowMultiple ? "checkbox" : "radio"}
+              className="accent-primary"
+              checked={selected.includes(option.value)}
+              onChange={() => toggle(option.value)}
+              disabled={submitted}
+            />
+            <span>{option.label}</span>
           </label>
         ))}
       </div>
-      <div className="mt-3">
-        <button className="btn" onClick={()=> onSubmit?.(q.id, checked)} disabled={!checked.length}>Отправить</button>
+      <div>
+        <button className="btn" onClick={handleSubmit} disabled={!selected.length || submitted}>
+          Зафиксировать ответ
+        </button>
       </div>
     </div>
   );
 }
 
-function RiskResultMessage({ payload }:{ payload: any }){
-  const score = Number(payload?.score ?? 0);
-  const profile = String(payload?.profile ?? "—");
-  const band = score <= 35 ? "Низкий" : score <= 65 ? "Умеренный" : "Высокий";
+function RiskResultMessage({ result }: { result: RiskProfileResult }) {
+  const { profile, conservative_score, moderate_score, aggressive_score, investment_horizon } =
+    result;
+
   return (
-    <div className="space-y-2">
-      <div className="text-sm text-muted">Ваш риск‑профиль</div>
+    <div className="space-y-3 text-sm">
+      <div className="text-xs uppercase text-muted">Ваш риск-профиль</div>
       <div className="flex items-center gap-2">
-        <span className="px-2 py-1 rounded-lg bg-white/10 border border-border text-sm">{profile}</span>
-        <span className="text-xs text-muted">({band}, {score} / 100)</span>
+        <span className="rounded-lg border border-border bg-white/10 px-2 py-1 text-sm font-semibold">
+          {profile}
+        </span>
+        {investment_horizon ? (
+          <span className="text-xs text-muted">Горизонт: {investment_horizon}</span>
+        ) : null}
       </div>
-      <div className="h-2 bg-white/10 rounded overflow-hidden">
-        <div className="h-2 bg-primary" style={{ width: `${Math.max(0, Math.min(100, score))}%` }} />
+      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+        <RiskScoreCard label="Консервативный" value={conservative_score} />
+        <RiskScoreCard label="Умеренный" value={moderate_score} />
+        <RiskScoreCard label="Агрессивный" value={aggressive_score} />
       </div>
+      <div className="rounded-lg border border-border bg-white/5 p-3 text-xs text-muted">
+        Мы будем использовать полученный профиль, чтобы подобрать подходящий портфель
+        инструментов и уровень риска.
+      </div>
+    </div>
+  );
+}
+
+function RiskScoreCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-border bg-white/5 p-2">
+      <div className="text-muted">{label}</div>
+      <div className="text-base font-semibold text-text">{value}</div>
     </div>
   );
 }
@@ -240,13 +634,13 @@ function PortfolioMessage({ portfolio, isAuth }: { portfolio: any; isAuth: boole
   const detailHref = id ? `/portfolios/${id}` : "/portfolios";
   return (
     <div className="relative">
-      <div className="space-y-2">
-        <div className="text-lg font-semibold">{portfolio?.name || "Портфель"}</div>
-        <div className="grid grid-cols-2 gap-3 text-sm">
+      <div className="space-y-2 text-sm">
+        <div className="text-lg font-semibold">{portfolio?.name || "Инвестиционный портфель"}</div>
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <div className="text-muted">Сумма</div>
-            <div className="text-text text-base font-semibold">
-              {isAuth ? `$${Number(portfolio?.totalValue || 0).toLocaleString()}` : "••••••"}
+            <div className="text-muted">Объем</div>
+            <div className="text-base font-semibold">
+              {isAuth ? `$${Number(portfolio?.totalValue || 0).toLocaleString()}` : "•••••"}
             </div>
           </div>
           <div>
@@ -256,28 +650,38 @@ function PortfolioMessage({ portfolio, isAuth }: { portfolio: any; isAuth: boole
             </div>
           </div>
           <div>
-            <div className="text-muted">Риск‑уровень</div>
-            <div className="text-base font-semibold">{isAuth ? portfolio?.riskLevel || "—" : "••••"}</div>
+            <div className="text-muted">Риск</div>
+            <div className="text-base font-semibold">
+              {isAuth ? portfolio?.riskLevel || "-" : "•••"}
+            </div>
           </div>
           <div>
             <div className="text-muted">Активов</div>
-            <div className="text-base font-semibold">{isAuth ? (portfolio?.assets?.length ?? 0) : "••"}</div>
+            <div className="text-base font-semibold">
+              {isAuth ? portfolio?.assets?.length ?? 0 : "••"}
+            </div>
           </div>
         </div>
         {isAuth ? (
           <div className="pt-2">
-            <Link to={detailHref} className="btn">Подробнее</Link>
+            <Link to={detailHref} className="btn">
+              Посмотреть детали
+            </Link>
           </div>
         ) : null}
       </div>
 
       {!isAuth && (
-        <div className="absolute inset-0 backdrop-blur-sm bg-black/30 grid place-items-center rounded-xl">
-          <div className="text-center">
-            <div className="mb-2">Войдите или зарегистрируйтесь, чтобы сохранить портфель</div>
+        <div className="absolute inset-0 grid place-items-center rounded-xl bg-black/30 backdrop-blur-sm">
+          <div className="text-center text-xs text-text">
+            <div className="mb-2">Авторизуйтесь, чтобы увидеть детали портфеля.</div>
             <div className="flex items-center justify-center gap-2">
-              <Link to="/auth" className="btn">Войти</Link>
-              <Link to="/auth?mode=register" className="tab">Регистрация</Link>
+              <Link to="/auth" className="btn">
+                Войти
+              </Link>
+              <Link to="/auth?mode=register" className="tab">
+                Зарегистрироваться
+              </Link>
             </div>
           </div>
         </div>
@@ -290,13 +694,11 @@ function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      const res = reader.result as string;
-      const b64 = res.split(",")[1] || "";
-      resolve(b64);
+      const result = reader.result as string;
+      const base64 = result.split(",")[1] || "";
+      resolve(base64);
     };
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
 }
-
-

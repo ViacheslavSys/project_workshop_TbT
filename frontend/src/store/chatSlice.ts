@@ -9,7 +9,7 @@ const slice = createSlice({
   initialState,
   reducers: {
     setStage(s, a:PayloadAction<ChatState["stage"]>) { s.stage = a.payload; },
-    pushMessage(s, a:PayloadAction<ChatMsg>) { s.messages.push(a.payload); },
+    pushMessage(s, a:PayloadAction<ChatMsg>) { s.messages = [...s.messages, a.payload]; },
     setMessages(s, a:PayloadAction<ChatMsg[]>) { s.messages = a.payload; },
     setTyping(s, a:PayloadAction<boolean>) { s.typing = a.payload; },
     resetChat() { return initialState; }
