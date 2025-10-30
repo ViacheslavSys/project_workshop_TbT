@@ -124,21 +124,7 @@ def check_all_contradictions(answers: dict, llm_data: Dict = None) -> List[Dict]
     contradictions = []
 
     if llm_data:
-        horizon = llm_data.get("horizon")
         capital_size = llm_data.get("capital_size")
-
-        if horizon == "A" and answers.get(8) == "C":
-            contradictions.append(
-                {
-                    "code": "short_term_high_return",
-                    "question": "Вы планируете инвестировать на короткий срок "
-                    + "(до 3 лет), но ожидаете высокую доходность. Что для вас важнее?",
-                    "options": [
-                        "A) Сохранить срок, снизить ожидания по доходности",
-                        "B) Готов продлить срок для достижения высокой доходности",
-                    ],
-                }
-            )
 
         if capital_size == "A" and answers.get(8) == "C":
             contradictions.append(
@@ -220,19 +206,6 @@ def apply_restrictions(
         aggressive = 0
         moderate = 0
         conservative = max(conservative, 8)
-
-    # Если есть данные из LLM, применяем дополнительные ограничения
-    if llm_data:
-        capital_size = llm_data.get("capital_size")
-        horizon = llm_data.get("horizon")
-
-        # Начинающий + крупный капитал → максимум умеренный
-        if answers_map.get(1) == "A" and capital_size == "C":
-            aggressive = min(aggressive, moderate)
-
-        # Короткий горизонт → максимум умеренный
-        if horizon == "A":
-            aggressive = min(aggressive, moderate)
 
     return conservative, moderate, aggressive
 
