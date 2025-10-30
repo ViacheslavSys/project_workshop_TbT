@@ -198,6 +198,7 @@ export default function ChatWide() {
 
   const stopRecording = () => {
     mediaRecorderRef.current?.stop();
+    setIsRecording(false);
   };
 
   const mapRiskQuestionToPayload = (
