@@ -61,3 +61,11 @@ class PortfolioCalculationResponse(BaseModel):
     annual_inflation_rate: float
     future_value_with_inflation: float
     recommendation: Optional[PortfolioRecommendation]
+
+
+class PortfolioAnalysisRequest(BaseModel):
+    user_id: str
+
+
+class PortfolioAnalysisResponse(BaseModel):
+    analysis: str

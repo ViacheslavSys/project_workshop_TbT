@@ -3,10 +3,13 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.schemas.portfolio import (
+    PortfolioAnalysisRequest,
+    PortfolioAnalysisResponse,
     PortfolioCalculationRequest,
     PortfolioCalculationResponse,
     PortfolioCreate,
 )
+from app.services.portfolio_analysis_service import PortfolioAnalysisService
 from app.services.portfolio_service import PortfolioService
 
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
@@ -66,3 +69,12 @@ async def create_portfolio(
         raise HTTPException(
             status_code=500, detail=f"Ошибка при создании портфеля: {str(e)}"
         )
+
+
+@router.post("/analyze", response_model=PortfolioAnalysisResponse)
+async def analyze_user_portfolio(request: PortfolioAnalysisRequest):
+    """Анализирует портфель пользователя через LLM"""
+    service = PortfolioAnalysisService()
+
+    analysis_result = service.analyze_portfolio(request.user_id)
+    return PortfolioAnalysisResponse(analysis=analysis_result)
