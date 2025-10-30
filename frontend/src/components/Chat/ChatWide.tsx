@@ -499,17 +499,49 @@ export default function ChatWide() {
               </div>
             ) : null}
 
-            <div className="mt-3 flex items-end gap-2">
-              <textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                rows={2}
-                className="flex-1 resize-none rounded-xl border border-border bg-white/5 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Опишите вашу инвестиционную цель..."
-              />
-              <button className="btn" onClick={handleSend} disabled={!draft.trim()}>
-                Отправить
-              </button>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="relative flex-1">
+                <textarea
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.isComposing
+                    ) {
+                      event.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  rows={2}
+                  className="flex-1 w-full resize-none rounded-xl border border-border bg-white/5 px-3 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  placeholder="Опишите вашу инвестиционную цель..."
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 transform items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={handleSend}
+                  disabled={!draft.trim()}
+                  aria-label="send message"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4"
+                  >
+                    <path d="M3 3l18 9-18 9 4-9-4-9z" />
+                    <path d="M11 12L3 3" />
+                    <path d="M11 12l-4 9" />
+                  </svg>
+                </button>
+              </div>
+
               <button
                 className={classNames(
                   "btn-secondary",
