@@ -453,7 +453,7 @@ class PortfolioService:
             smart_goal=smart_goal,
         )
 
-        return PortfolioCalculationResponse(
+        portfolio_response = PortfolioCalculationResponse(
             target_amount=target_amount,
             initial_capital=initial_capital,
             investment_term_months=term_months,
@@ -461,3 +461,7 @@ class PortfolioService:
             future_value_with_inflation=future_value,
             recommendation=recommendation,
         )
+        portfolio_key = f"user:{user_id}:portfolio"
+        cache.set_json(portfolio_key, portfolio_response.dict(), expire=3600)
+
+        return portfolio_response
