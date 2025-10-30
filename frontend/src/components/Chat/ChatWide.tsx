@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -144,22 +144,41 @@ export default function ChatWide() {
       recorder.onstop = async () => {
         const userId = userIdRef.current || getAnonymousUserId();
         userIdRef.current = userId;
-        const blob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
-        if (!blob.size) {
+        const rawBlob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
+        if (!rawBlob.size) {
           setIsRecording(false);
           return;
         }
-        const base64 = await blobToBase64(blob);
-        appendMessage("user", "audio", { mime: blob.type, data: base64 });
-        dispatch(setTyping(true));
-        setError(null);
+
+        let preparedBlob: Blob;
+        let preparedFilename: string;
         try {
-          const response = await sendChatAudio(userId, blob);
+          const prepared = await prepareAudioForUpload(rawBlob);
+          preparedBlob = prepared.blob;
+          preparedFilename = prepared.filename;
+        } catch (conversionError) {
+          const message =
+            conversionError instanceof Error
+              ? conversionError.message
+              : "Не удалось обработать аудиозапись.";
+          appendMessage("ai", "message", `Ошибка: ${message}`);
+          setError(message);
+          setIsRecording(false);
+          return;
+        }
+
+        try {
+          const base64 = await blobToBase64(preparedBlob);
+          appendMessage("user", "audio", { mime: preparedBlob.type, data: base64 });
+          dispatch(setTyping(true));
+          setError(null);
+
+          const response = await sendChatAudio(userId, preparedBlob, preparedFilename);
           appendMessage("ai", "message", response);
           dispatch(setStage("goals"));
         } catch (err) {
           const message =
-            err instanceof Error ? err.message : "Не удалось обработать голосовое сообщение";
+            err instanceof Error ? err.message : "Не удалось обработать аудио сообщение";
           appendMessage("ai", "message", `Ошибка: ${message}`);
           setError(message);
         } finally {
@@ -167,7 +186,6 @@ export default function ChatWide() {
           setIsRecording(false);
         }
       };
-
       recorder.start();
       setIsRecording(true);
     } catch (err) {
@@ -414,12 +432,6 @@ export default function ChatWide() {
               </div>
             ) : null}
 
-            <div className="mt-3 flex items-center gap-2">
-              <button className="tab text-sm" onClick={handleStartRisk} disabled={pending}>
-                Пройти тест на риск-профиль
-              </button>
-            </div>
-
             <div className="mt-3 flex items-end gap-2">
               <textarea
                 value={draft}
@@ -438,7 +450,7 @@ export default function ChatWide() {
                 )}
                 onClick={() => (isRecording ? stopRecording() : startRecording())}
               >
-                {isRecording ? "Остановить" : "Голос"}
+                {isRecording ? "🟥" : "🎙️"}
               </button>
             </div>
           </div>
@@ -702,3 +714,117 @@ function blobToBase64(blob: Blob): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
+
+const ACCEPTED_AUDIO_MIME_TYPES = new Map<string, string>([
+  ["audio/wav", "wav"],
+  ["audio/x-wav", "wav"],
+  ["audio/wave", "wav"],
+  ["audio/mpeg", "mp3"],
+  ["audio/mp3", "mp3"],
+  ["audio/ogg", "ogg"],
+  ["audio/flac", "flac"],
+  ["audio/x-flac", "flac"],
+  ["audio/mp4", "mp4"],
+  ["audio/m4a", "m4a"],
+  ["audio/x-m4a", "m4a"],
+]);
+
+type PreparedAudio = { blob: Blob; filename: string };
+
+async function prepareAudioForUpload(original: Blob): Promise<PreparedAudio> {
+  const extension = ACCEPTED_AUDIO_MIME_TYPES.get(original.type);
+  if (extension) {
+    return {
+      blob: original,
+      filename: `voice-message.${extension}`,
+    };
+  }
+
+  const wavBlob = await convertBlobToWav(original);
+  return { blob: wavBlob, filename: "voice-message.wav" };
+}
+
+let sharedAudioContext: AudioContext | null = null;
+
+async function convertBlobToWav(blob: Blob): Promise<Blob> {
+  const AudioCtx: typeof AudioContext | undefined =
+    window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioCtx) {
+    throw new Error("Браузер не поддерживает перекодирование аудио.");
+  }
+
+  if (!sharedAudioContext) {
+    sharedAudioContext = new AudioCtx();
+  }
+
+  const ctx = sharedAudioContext;
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+  const wavBuffer = audioBufferToWav(audioBuffer);
+
+  return new Blob([wavBuffer], { type: "audio/wav" });
+}
+
+function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const bitDepth = 16;
+  const format = 1; // PCM
+
+  const samples = buffer.length * numChannels;
+  const dataLength = samples * (bitDepth / 8);
+  const totalLength = 44 + dataLength;
+  const arrayBuffer = new ArrayBuffer(totalLength);
+  const view = new DataView(arrayBuffer);
+
+  let offset = 0;
+
+  const writeString = (value: string) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+    offset += value.length;
+  };
+
+  const writeUint32 = (value: number) => {
+    view.setUint32(offset, value, true);
+    offset += 4;
+  };
+
+  const writeUint16 = (value: number) => {
+    view.setUint16(offset, value, true);
+    offset += 2;
+  };
+
+  writeString("RIFF");
+  writeUint32(totalLength - 8);
+  writeString("WAVE");
+  writeString("fmt ");
+  writeUint32(16);
+  writeUint16(format);
+  writeUint16(numChannels);
+  writeUint32(sampleRate);
+  writeUint32(sampleRate * numChannels * (bitDepth / 8));
+  writeUint16(numChannels * (bitDepth / 8));
+  writeUint16(bitDepth);
+  writeString("data");
+  writeUint32(dataLength);
+
+  const channelData: Float32Array[] = [];
+  for (let channel = 0; channel < numChannels; channel += 1) {
+    channelData.push(buffer.getChannelData(channel));
+  }
+
+  for (let i = 0; i < buffer.length; i += 1) {
+    for (let channel = 0; channel < numChannels; channel += 1) {
+      let sample = channelData[channel][i];
+      sample = Math.max(-1, Math.min(1, sample));
+      const integerSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      view.setInt16(offset, integerSample, true);
+      offset += 2;
+    }
+  }
+
+  return arrayBuffer;
+}
+

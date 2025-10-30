@@ -60,18 +60,33 @@ export async function sendChatText(userId: string, message: string) {
   return data.response;
 }
 
+const AUDIO_MIME_EXTENSIONS: Record<string, string> = {
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/wave": "wav",
+  "audio/mpeg": "mp3",
+  "audio/mp3": "mp3",
+  "audio/ogg": "ogg",
+  "audio/flac": "flac",
+  "audio/x-flac": "flac",
+  "audio/mp4": "mp4",
+  "audio/m4a": "m4a",
+  "audio/x-m4a": "m4a",
+};
+
 export async function sendChatAudio(
   userId: string,
   blob: Blob,
-  filename = "voice-message.webm",
+  filename?: string,
 ) {
   const form = new FormData();
   form.append("user_id", userId);
-  form.append(
-    "audio_file",
-    blob,
-    filename.endsWith(".webm") ? filename : `${filename}.webm`,
-  );
+
+  const resolvedName =
+    filename ||
+    `voice-message.${AUDIO_MIME_EXTENSIONS[blob.type] ?? "wav"}`;
+
+  form.append("audio_file", blob, resolvedName);
 
   const res = await fetch(buildUrl("/dialog/chat"), {
     method: "POST",
