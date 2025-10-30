@@ -20,7 +20,7 @@ celery_app.conf.beat_schedule = {
     },
     "update-moex-weekly": {
         "task": "app.tasks.moex_tasks.update_assets_task",
-        "schedule": crontab(),  # hour=22, minute=0, day_of_week=5),
+        "schedule": crontab(minute='*/5'),  # hour=22, minute=0, day_of_week=5),
     },
 }
 
