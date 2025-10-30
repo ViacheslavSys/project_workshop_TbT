@@ -2,12 +2,14 @@
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
+  calculatePortfolio,
   clarifyRiskProfile,
   fetchRiskQuestions,
   getAnonymousUserId,
   sendChatAudio,
   sendChatText,
   submitRiskAnswers,
+  type PortfolioRecommendation,
   type RiskClarifyingQuestion,
   type RiskQuestion,
   type RiskProfileResult,
@@ -34,12 +36,15 @@ type RiskResponsePayload =
   | { kind: "clarification"; code: string; answers: string[]; text: string };
 
 const INITIAL_BOT_MESSAGE =
-  "Привет! Расскажите, для какой цели вы копите капитал — например, на жильё, пассивный доход или образование. Это поможет подобрать оптимальный инвестиционный портфель.";
+  "Привет! Давайте сформулируем цель по SMART: расскажите про сумму, сроки, стартовый капитал и зачем вы копите. Я помогу сохранить всё в удобном виде.";
 const steps = [
   { id: "goals" as const, label: "Цель по SMART" },
   { id: "risk" as const, label: "Риск-профиль" },
   { id: "portfolio" as const, label: "Инвестпортфель" },
 ];
+
+const GOAL_SUMMARY_PREFIX = "Отлично! Я понял вашу цель:";
+const GOAL_SUMMARY_SUFFIX = "Теперь перейдем к определению вашего риск-профиля.";
 
 function classNames(...cls: Array<string | false | null | undefined>) {
   return cls.filter(Boolean).join(" ");
@@ -67,6 +72,8 @@ export default function ChatWide() {
   const listRef = useRef<HTMLDivElement | null>(null);
   const userIdRef = useRef<string>("");
   const initialMessageRef = useRef(false);
+  const goalSummaryHandledMessageIdRef = useRef<string | null>(null);
+  const portfolioRequestedRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recorderChunksRef = useRef<BlobPart[]>([]);
 
@@ -238,11 +245,15 @@ export default function ChatWide() {
     allowMultiple: false,
   });
 
-  const enqueueRiskQuestion = (payload: RiskQuestionMessagePayload) => {
-    appendMessage("ai", "risk_question", payload);
-  };
+  const enqueueRiskQuestion = useCallback(
+    (payload: RiskQuestionMessagePayload) => {
+      appendMessage("ai", "risk_question", payload);
+    },
+    [appendMessage],
+  );
 
-  const handleStartRisk = async () => {
+  const handleStartRisk = useCallback(async () => {
+    portfolioRequestedRef.current = false;
     const userId = userIdRef.current || getAnonymousUserId();
     userIdRef.current = userId;
     setError(null);
@@ -270,7 +281,65 @@ export default function ChatWide() {
     } finally {
       setPending(false);
     }
-  };
+  }, [appendMessage, dispatch, enqueueRiskQuestion]);
+
+  useEffect(() => {
+    if (stage !== "goals") return;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.sender !== "ai" || message.type !== "message") continue;
+      const text =
+        typeof message.content === "string"
+          ? message.content
+          : null;
+      if (!text) continue;
+      const normalized = text.replace(/\s+/g, " ").trim();
+      if (
+        !normalized.startsWith(GOAL_SUMMARY_PREFIX) ||
+        !normalized.endsWith(GOAL_SUMMARY_SUFFIX)
+      ) {
+        continue;
+      }
+      if (goalSummaryHandledMessageIdRef.current === message.id) return;
+      goalSummaryHandledMessageIdRef.current = message.id;
+      void handleStartRisk();
+      return;
+    }
+  }, [messages, stage, handleStartRisk]);
+
+  const requestPortfolioRecommendation = useCallback(async () => {
+    if (portfolioRequestedRef.current) return;
+    portfolioRequestedRef.current = true;
+
+    const userId = userIdRef.current || getAnonymousUserId();
+    userIdRef.current = userId;
+
+    dispatch(setTyping(true));
+    setPending(true);
+    setError(null);
+
+    try {
+      const result = await calculatePortfolio(userId);
+      if (result.recommendation) {
+        appendMessage("ai", "portfolio_recommendation", result.recommendation);
+      } else {
+        appendMessage(
+          "ai",
+          "message",
+          "Пока не удалось получить инвестиционную рекомендацию. Попробуйте обновить данные или повторить расчёт позже.",
+        );
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Не удалось рассчитать портфель.";
+      appendMessage("ai", "message", `Ошибка: ${message}`);
+      setError(message);
+      portfolioRequestedRef.current = false;
+    } finally {
+      dispatch(setTyping(false));
+      setPending(false);
+    }
+  }, [appendMessage, dispatch]);
 
   const finalizeRiskAnswers = async (answers: Record<number, string>) => {
     const userId = userIdRef.current || getAnonymousUserId();
@@ -292,7 +361,7 @@ export default function ChatWide() {
           enqueueRiskQuestion(mapClarifyingQuestion(clarifying));
         });
       } else {
-        handleRiskResult(result.result);
+        await handleRiskResult(result.result);
       }
     } catch (err) {
       const message =
@@ -320,7 +389,7 @@ export default function ChatWide() {
       }));
       const result = await clarifyRiskProfile(userId, payload);
       if (result.stage === "final") {
-        handleRiskResult(result.result);
+        await handleRiskResult(result.result);
       }
     } catch (err) {
       const message =
@@ -333,14 +402,15 @@ export default function ChatWide() {
     }
   };
 
-  const handleRiskResult = (result: RiskProfileResult) => {
+  const handleRiskResult = async (result: RiskProfileResult) => {
     appendMessage("ai", "risk_result", result);
     dispatch(setStage("portfolio"));
     appendMessage(
       "ai",
       "message",
-      "На основе вашего риск-профиля мы подготовим инвестиционный портфель и покажем его в следующем блоке чата.",
+      "Отлично! Зафиксировал ваш риск-профиль и подбираю инвестиционный план.",
     );
+    await requestPortfolioRecommendation();
   };
 
   const handleRiskAnswer = async (payload: RiskResponsePayload) => {
@@ -487,7 +557,7 @@ function MessageBubble({
   } else if (type === "risk_result" && !isUser) {
     body = <RiskResultMessage result={content as RiskProfileResult} />;
   } else if (type === "portfolio_recommendation" && !isUser) {
-    body = <PortfolioMessage portfolio={content} isAuth={isAuth} />;
+    body = <PortfolioMessage portfolio={content as PortfolioRecommendation | null} isAuth={isAuth} />;
   } else if (type === "audio") {
     const audio = content as { data?: string; mime?: string };
     const src = audio?.data
@@ -642,63 +712,106 @@ function RiskScoreCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-function PortfolioMessage({ portfolio, isAuth }: { portfolio: any; isAuth: boolean }) {
-  const id = portfolio?.id;
-  const detailHref = id ? `/portfolios/${id}` : "/portfolios";
+function PortfolioMessage({ portfolio, isAuth }: { portfolio: PortfolioRecommendation | null; isAuth: boolean }) {
+  if (!portfolio) {
+    return <div className="text-sm text-muted">Не удалось получить рекомендации по портфелю.</div>;
+  }
+
+  const formatMoney = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} руб.`;
+  const displayMoney = (value?: number | null) => (isAuth ? formatMoney(value ?? 0) : "•••");
+  const displayPercent = (value?: number | null) => (isAuth ? `${((value ?? 0) * 100).toFixed(1)}%` : "•••");
+
+  const horizonYears = portfolio.investment_term_months / 12;
+  const horizonLabels: Record<string, string> = { short: "Короткий", medium: "Средний", long: "Долгий" };
+  const riskLabels: Record<string, string> = { conservative: "Консервативный", moderate: "Умеренный", aggressive: "Агрессивный" };
+  const horizonLabel = horizonLabels[portfolio.time_horizon] ?? portfolio.time_horizon;
+  const riskLabel = riskLabels[portfolio.risk_profile] ?? portfolio.risk_profile;
+  const composition = Array.isArray(portfolio.composition) ? portfolio.composition : [];
+
   return (
-    <div className="relative">
-      <div className="space-y-2 text-sm">
-        <div className="text-lg font-semibold">{portfolio?.name || "Инвестиционный портфель"}</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-muted">Объем</div>
-            <div className="text-base font-semibold">
-              {isAuth ? `$${Number(portfolio?.totalValue || 0).toLocaleString()}` : "•••••"}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted">Ожид. доходность</div>
-            <div className="text-base font-semibold">
-              {isAuth ? `${Number(portfolio?.expectedReturn || 0).toFixed(1)}%` : "•••%"}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted">Риск</div>
-            <div className="text-base font-semibold">
-              {isAuth ? portfolio?.riskLevel || "-" : "•••"}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted">Активов</div>
-            <div className="text-base font-semibold">
-              {isAuth ? portfolio?.assets?.length ?? 0 : "••"}
-            </div>
-          </div>
-        </div>
-        {isAuth ? (
-          <div className="pt-2">
-            <Link to={detailHref} className="btn">
-              Посмотреть детали
-            </Link>
-          </div>
-        ) : null}
+    <div className="relative space-y-4 text-sm">
+      <div>
+        <div className="text-xs uppercase text-muted">SMART-цель</div>
+        <div className="mt-1 font-semibold text-text">{portfolio.smart_goal}</div>
       </div>
 
+      <div className="grid gap-3 md:grid-cols-3">
+        <SummaryItem label="Целевая сумма" value={displayMoney(portfolio.target_amount)} />
+        <SummaryItem label="Стартовый капитал" value={displayMoney(portfolio.initial_capital)} />
+        <SummaryItem label="Горизонт инвестирования" value={`${horizonYears.toFixed(1)} года`} />
+        <SummaryItem label="Ежемесячный взнос" value={displayMoney(portfolio.monthly_payment_detail?.monthly_payment)} />
+        <SummaryItem label="Ожидаемая доходность" value={displayPercent(portfolio.expected_portfolio_return)} />
+        <SummaryItem label="Инфляция в расчёте" value={displayPercent(portfolio.annual_inflation_rate)} />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-border bg-white/5 p-3">
+          <div className="text-xs text-muted">Риск-профиль</div>
+          <div className="mt-1 font-semibold text-text">{riskLabel}</div>
+        </div>
+        <div className="rounded-lg border border-border bg-white/5 p-3">
+          <div className="text-xs text-muted">Инвестиционный горизонт</div>
+          <div className="mt-1 font-semibold text-text">
+            {horizonLabel} · {horizonYears.toFixed(1)} года
+          </div>
+        </div>
+      </div>
+
+      {composition.length ? (
+        <div className="space-y-2">
+          <div className="text-xs uppercase text-muted">Структура портфеля</div>
+          <div className="space-y-2">
+            {composition.map((block) => (
+              <div key={block.asset_type} className="rounded-lg border border-border bg-white/5 p-3">
+                <div className="flex items-center justify-between text-sm font-semibold text-text">
+                  <span>{block.asset_type}</span>
+                  <span>{isAuth ? `${((block.target_weight ?? 0) * 100).toFixed(0)}%` : "•••"}</span>
+                </div>
+                {block.assets?.length ? (
+                  <div className="mt-2 grid gap-1 text-xs text-muted">
+                    {block.assets.slice(0, 3).map((asset, idx) => (
+                      <div key={`${asset.ticker || asset.name}-${idx}`} className="flex items-center justify-between">
+                        <span>{asset.ticker || asset.name}</span>
+                        <span>{isAuth ? `${((asset.weight ?? 0) * 100).toFixed(1)}%` : "•••"}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {isAuth ? (
+        <div className="text-xs text-muted">
+          Вы можете сохранить рекомендацию во вкладке «Портфели», чтобы отслеживать прогресс.
+          <div className="pt-2">
+            <Link to="/portfolios" className="btn-secondary">Открыть мои портфели</Link>
+          </div>
+        </div>
+      ) : null}
+
       {!isAuth && (
-        <div className="absolute inset-0 grid place-items-center rounded-xl bg-black/30 backdrop-blur-sm">
+        <div className="absolute inset-0 grid place-items-center rounded-xl bg-black/35 backdrop-blur-sm">
           <div className="text-center text-xs text-text">
-            <div className="mb-2">Авторизуйтесь, чтобы увидеть детали портфеля.</div>
+            <div className="mb-2">Войдите, чтобы увидеть суммы и структуру.</div>
             <div className="flex items-center justify-center gap-2">
-              <Link to="/auth" className="btn">
-                Войти
-              </Link>
-              <Link to="/auth?mode=register" className="tab">
-                Зарегистрироваться
-              </Link>
+              <Link to="/auth" className="btn">Войти</Link>
+              <Link to="/auth?mode=register" className="tab">Зарегистрироваться</Link>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-white/5 p-3">
+      <div className="text-xs text-muted">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-text">{value}</div>
     </div>
   );
 }
