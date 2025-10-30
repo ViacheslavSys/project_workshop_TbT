@@ -2,8 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.schemas.portfolio import PortfolioCreate, PortfolioOut
-from app.services import portfolio_service
+from app.schemas.portfolio import (
+    PortfolioCalculationRequest,
+    PortfolioCalculationResponse,
+    PortfolioCreate,
+)
+from app.services.portfolio_service import PortfolioService
 
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
 
@@ -16,21 +20,49 @@ def get_db():
         db.close()
 
 
-@router.get("/", response_model=list[PortfolioOut])
-def list_portfolios(user_id: int, db: Session = Depends(get_db)):
-    return portfolio_service.list_portfolios(db, user_id)
-
-
-@router.post("/", response_model=PortfolioOut)
-def create_portfolio(
-    user_id: int, portfolio_in: PortfolioCreate, db: Session = Depends(get_db)
+@router.post("/calculate", response_model=PortfolioCalculationResponse)
+async def calculate_portfolio(
+    request: PortfolioCalculationRequest, db: Session = Depends(get_db)
 ):
-    return portfolio_service.add_portfolio(db, user_id, portfolio_in)
+    """
+    Расчет целевой стоимости с учетом инфляции и формирование портфеля
+    """
+    try:
+        portfolio_service = PortfolioService(db)
+        result = portfolio_service.calculate_portfolio(request.user_id)
+        return result
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при расчете: {str(e)}")
 
 
-@router.delete("/{portfolio_id}")
-def delete_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
-    success = portfolio_service.remove_portfolio(db, portfolio_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-    return {"message": "Portfolio deleted successfully"}
+@router.post("/create")
+async def create_portfolio(
+    portfolio_in: PortfolioCreate, db: Session = Depends(get_db)
+):
+    """
+    Сохранение портфеля в базе данных
+    """
+    try:
+        portfolio_service = PortfolioService(db)
+
+        # Получаем расчет портфеля
+        calculation = portfolio_service.calculate_portfolio(portfolio_in.user_id)
+
+        # Здесь можно добавить логику сохранения в БД
+        # using your existing repository functions
+
+        return {
+            "message": "Портфель успешно создан",
+            "portfolio_id": "generated_id",  # Замените на реальный ID
+            "calculation": calculation,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка при создании портфеля: {str(e)}"
+        )

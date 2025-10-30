@@ -49,3 +49,5 @@ htmlcov/
 .pytest_cache/
 .tox/
 .nox/
+
+frontend/
