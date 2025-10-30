@@ -87,6 +87,16 @@ class PortfolioService:
     ) -> Dict[str, float]:
         """Определение распределения активов по риск-профилю и сроку"""
 
+        profile_mapping = {
+            'Консервативный': 'conservative',
+            'Умеренный': 'moderate',
+            'Агрессивный': 'aggressive',
+        }
+
+        risk_profile_en = profile_mapping.get(risk_profile, risk_profile.lower())
+
+        print(f"📊 [DEBUG] Профиль риска: {risk_profile} -> {risk_profile_en}")
+
         if term_years <= 3:
             horizon = 'short'
         elif term_years <= 7:
@@ -159,7 +169,7 @@ class PortfolioService:
             },
         }
 
-        allocation = rules.get(risk_profile, {}).get(
+        allocation = rules.get(risk_profile_en, {}).get(
             horizon, rules['moderate']['medium']
         )
         return allocation
@@ -428,7 +438,7 @@ class PortfolioService:
         """Основной метод расчета полного инвестиционного плана"""
 
         goal_data = cache.get_json(f"user:{user_id}:llm_goal")
-
+        profile = cache.get_json(f"user:{user_id}:risk_result")
         if not goal_data:
             raise ValueError(
                 "Данные цели не найдены. Сначала определите цель через диалог."
@@ -438,7 +448,7 @@ class PortfolioService:
         target_amount = goal_data["sum"]
         initial_capital = goal_data["capital"]
         smart_goal = goal_data["reason"]
-        risk_profile = goal_data.get("risk_profile", "moderate")
+        risk_profile = profile["profile"]
 
         future_value, inflation_rate = self.calculate_future_value_with_inflation(
             goal_sum=target_amount, term_months=term_months
