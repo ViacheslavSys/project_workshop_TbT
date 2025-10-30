@@ -464,11 +464,7 @@ export default function ChatWide() {
                     "w-full rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/5",
                     stage === item.id ? "bg-white/10 text-text" : "text-muted",
                   )}
-                  onClick={() => {
-                    if (item.id === "risk") handleStartRisk();
-                    if (item.id === "goals") dispatch(setStage("goals"));
-                  }}
-                  disabled={pending && item.id === "risk"}
+                  disabled
                 >
                   {item.label}
                 </button>
@@ -476,8 +472,8 @@ export default function ChatWide() {
             </nav>
           </aside>
 
-          <div className="flex h-[70vh] flex-1 flex-col">
-            <div ref={listRef} className="flex-1 overflow-y-auto pr-1">
+          <div className="flex h-[75vh] flex-1 flex-col">
+            <div ref={listRef} className="flex-1 overflow-y-auto pr-1 scrollbar-themed">
               <div className="flex flex-col gap-2">
                 {messages.map((message) => (
                   <MessageBubble
@@ -718,8 +714,8 @@ function PortfolioMessage({ portfolio, isAuth }: { portfolio: PortfolioRecommend
   }
 
   const formatMoney = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} руб.`;
-  const displayMoney = (value?: number | null) => (isAuth ? formatMoney(value ?? 0) : "•••");
-  const displayPercent = (value?: number | null) => (isAuth ? `${((value ?? 0) * 100).toFixed(1)}%` : "•••");
+  const displayMoney = (value?: number | null) => formatMoney(value ?? 0);
+  const displayPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed(1)}%`;
 
   const horizonYears = portfolio.investment_term_months / 12;
   const horizonLabels: Record<string, string> = { short: "Короткий", medium: "Средний", long: "Долгий" };
@@ -765,14 +761,14 @@ function PortfolioMessage({ portfolio, isAuth }: { portfolio: PortfolioRecommend
               <div key={block.asset_type} className="rounded-lg border border-border bg-white/5 p-3">
                 <div className="flex items-center justify-between text-sm font-semibold text-text">
                   <span>{block.asset_type}</span>
-                  <span>{isAuth ? `${((block.target_weight ?? 0) * 100).toFixed(0)}%` : "•••"}</span>
+                  <span>{`${((block.target_weight ?? 0) * 100).toFixed(0)}%`}</span>
                 </div>
                 {block.assets?.length ? (
                   <div className="mt-2 grid gap-1 text-xs text-muted">
                     {block.assets.slice(0, 3).map((asset, idx) => (
                       <div key={`${asset.ticker || asset.name}-${idx}`} className="flex items-center justify-between">
                         <span>{asset.ticker || asset.name}</span>
-                        <span>{isAuth ? `${((asset.weight ?? 0) * 100).toFixed(1)}%` : "•••"}</span>
+                        <span>{`${((asset.weight ?? 0) * 100).toFixed(1)}%`}</span>
                       </div>
                     ))}
                   </div>
@@ -792,17 +788,6 @@ function PortfolioMessage({ portfolio, isAuth }: { portfolio: PortfolioRecommend
         </div>
       ) : null}
 
-      {!isAuth && (
-        <div className="absolute inset-0 grid place-items-center rounded-xl bg-black/35 backdrop-blur-sm">
-          <div className="text-center text-xs text-text">
-            <div className="mb-2">Войдите, чтобы увидеть суммы и структуру.</div>
-            <div className="flex items-center justify-center gap-2">
-              <Link to="/auth" className="btn">Войти</Link>
-              <Link to="/auth?mode=register" className="tab">Зарегистрироваться</Link>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

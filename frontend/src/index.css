@@ -19,6 +19,31 @@
 .tab-active { @apply bg-white/10 text-text; }
 .tabular-nums { font-variant-numeric: tabular-nums; }
 
+/* Scrollbars */
+.scrollbar-themed {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(37, 99, 235, 0.5) rgba(255, 255, 255, 0.04);
+}
+
+.scrollbar-themed::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollbar-themed::-webkit-scrollbar-track {
+  background: rgba(10, 14, 26, 0.7);
+  border-radius: 9999px;
+}
+
+.scrollbar-themed::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.75), rgba(37, 99, 235, 0.45));
+  border-radius: 9999px;
+  border: 2px solid rgba(10, 14, 26, 0.7);
+}
+
+.scrollbar-themed::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.9), rgba(37, 99, 235, 0.6));
+}
+
 /* Chatbot kit tiny dark tune-ups */
 .react-chatbot-kit-chat-container { background: transparent; border: 1px solid var(--border); border-radius: var(--radius); }
 .react-chatbot-kit-chat-bot-message { background: rgba(255,255,255,.06); color: var(--text); }
