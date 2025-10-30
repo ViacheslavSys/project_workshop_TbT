@@ -1,3 +1,4 @@
+# services/moex_service.py
 import datetime
 from typing import Dict, List, Tuple
 
@@ -78,13 +79,13 @@ def find_nearest_trading_date(
     return 0.0, target_date
 
 
-def fetch_all_prices_data(tickers: List[Tuple[str, str]]) -> Dict[str, Dict]:
+def fetch_all_prices_data(tickers: List[Tuple[str, str, str]]) -> Dict[str, Dict]:
     """Получить ВСЕ данные с MOEX за один раз для всех активов"""
 
     price_data = {}
 
-    for ticker, asset_type in tickers:
-        print(f"[INFO] Получение данных для {ticker} ({asset_type})")
+    for ticker, asset_type, asset_name in tickers:
+        print(f"[INFO] Получение данных для {asset_name} ({ticker}, {asset_type})")
 
         # Определяем рынок
         if (
@@ -168,6 +169,8 @@ def fetch_all_prices_data(tickers: List[Tuple[str, str]]) -> Dict[str, Dict]:
             )
 
         price_data[ticker] = {
+            'name': asset_name,  # Человеко-читаемое название
+            'ticker': ticker,  # Тикер
             'asset_type': asset_type,
             'current_price': current_price,
             'historical_price': historical_price,
@@ -176,7 +179,7 @@ def fetch_all_prices_data(tickers: List[Tuple[str, str]]) -> Dict[str, Dict]:
         }
 
         print(
-            f"[SUMMARY] {ticker}: current={current_price}, "
+            f"[SUMMARY] {asset_name} ({ticker}): current={current_price}, "
             f"historical={historical_price}, prices_series={len(historical_prices)}"
         )
 
@@ -189,6 +192,7 @@ def calculate_yield_and_volatility(price_data: Dict[str, Dict]) -> Dict[str, Dic
     results = {}
 
     for ticker, data in price_data.items():
+        asset_name = data['name']
         asset_type = data['asset_type']
         current_price = data['current_price']
         historical_price = data['historical_price']
@@ -205,7 +209,7 @@ def calculate_yield_and_volatility(price_data: Dict[str, Dict]) -> Dict[str, Dic
 
             yield_value = (current_price / historical_price) ** (1 / years_diff) - 1
             print(
-                f"[CALC] {ticker}: доходность = {yield_value:.4f} "
+                f"[CALC] {asset_name}: доходность = {yield_value:.4f} "
                 f"за {years_diff:.2f} лет"
             )
         else:
@@ -227,9 +231,11 @@ def calculate_yield_and_volatility(price_data: Dict[str, Dict]) -> Dict[str, Dic
                 yield_value = 0.07
             else:
                 yield_value = 0.08
-            print(f"[FALLBACK] {ticker}: доходность по умолчанию = {yield_value:.4f}")
+            print(
+                f"[FALLBACK] {asset_name}: доходность по умолчанию = {yield_value:.4f}"
+            )
 
-        # Расчет волатильности - КОНВЕРТИРУЕМ В PYTHON FLOAT!
+        # Расчет волатильности
         volatility = 0.0
         if len(prices_series) >= 2:
             try:
@@ -241,33 +247,30 @@ def calculate_yield_and_volatility(price_data: Dict[str, Dict]) -> Dict[str, Dic
 
                 if len(returns) >= 2:
                     daily_volatility = np.std(returns)
-                    volatility = float(
-                        daily_volatility * np.sqrt(252)
-                    )  # ← КОНВЕРТИРУЕМ В FLOAT!
+                    volatility = float(daily_volatility * np.sqrt(252))
                     print(
-                        f"[CALC] {ticker}: волатильность = {volatility:.4f} "
+                        f"[CALC] {asset_name}: волатильность = {volatility:.4f} "
                         f"(на основе {len(returns)} доходностей)"
                     )
                 else:
-                    # Fallback волатильность
                     volatility = get_fallback_volatility(asset_type)
                     print(
-                        f"[FALLBACK] {ticker}: волатильность по умолчанию = "
+                        f"[FALLBACK] {asset_name}: волатильность по умолчанию = "
                         f"{volatility:.4f}"
                     )
             except Exception as e:
-                print(f"[ERROR] {ticker}: ошибка расчета волатильности: {e}")
+                print(f"[ERROR] {asset_name}: ошибка расчета волатильности: {e}")
                 volatility = get_fallback_volatility(asset_type)
         else:
             volatility = get_fallback_volatility(asset_type)
             print(
-                f"[FALLBACK] {ticker}: недостаточно данных для волатильности, "
+                f"[FALLBACK] {asset_name}: недостаточно данных для волатильности, "
                 f"используется значение по умолчанию: {volatility:.4f}"
             )
 
-        # КОНВЕРТИРУЕМ ВСЕ ЧИСЛА В PYTHON FLOAT!
         results[ticker] = {
-            'name': ticker,
+            'name': asset_name,  # Человеко-читаемое название
+            'ticker': ticker,  # Тикер
             'type': asset_type,
             'price_old': float(historical_price),
             'price_now': float(current_price),
@@ -292,7 +295,7 @@ def get_fallback_volatility(asset_type: str) -> float:
         return 0.15
 
 
-def fetch_asset_data_batch(tickers: List[Tuple[str, str]]) -> List[Dict]:
+def fetch_asset_data_batch(tickers: List[Tuple[str, str, str]]) -> List[Dict]:
     """Основная функция: получить все данные и рассчитать показатели"""
 
     print(f"[BATCH] Начало получения данных для {len(tickers)} активов")

@@ -42,6 +42,7 @@ class PortfolioRecommendation(BaseModel):
     future_value_with_inflation: float
     risk_profile: str
     time_horizon: str
+    smart_goal: str
     total_investment: float
     expected_portfolio_return: float
     composition: List[PortfolioComposition]

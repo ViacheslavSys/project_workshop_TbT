@@ -8,6 +8,7 @@ class Asset(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    ticker = Column(String, nullable=False)
     type = Column(String, nullable=False)
     price_old = Column(Float, nullable=True)
     price_now = Column(Float, nullable=True)

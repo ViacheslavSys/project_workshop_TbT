@@ -47,34 +47,23 @@ class PortfolioService:
         """
         Расчет ежемесячного платежа с учётом доходности и стартового капитала
         """
-
         # Проверяем входные параметры
         if portfolio_return is None:
-            print("⚠️ [WARNING] portfolio_return is None, устанавливаем 0.08")
             portfolio_return = 0.08
 
         if portfolio_return <= 0:
             portfolio_return = 0.08
 
-        print(f"📊 [DEBUG] Используемая доходность: {portfolio_return}")
-
         # Расчет месячной ставки
         monthly_rate = (1 + portfolio_return) ** (1 / 12) - 1
         months = years * 12
 
-        print(f"📊 [DEBUG] monthly_rate: {monthly_rate}")
-        print(f"📊 [DEBUG] months: {months}")
-
         # Защита от деления на ноль
         if abs(monthly_rate) < 1e-10:
-            print("⚠️ [WARNING] monthly_rate почти ноль, используем простой расчет")
             annuity_factor = months
         else:
             annuity_factor = ((1 + monthly_rate) ** months - 1) / monthly_rate
 
-        print(f"📊 [DEBUG] annuity_factor: {annuity_factor}")
-
-        # Расчет будущей стоимости начального капитала
         if start_capital > 0:
             future_capital = start_capital * (1 + portfolio_return) ** years
             monthly_payment = max(0, (future_goal - future_capital) / annuity_factor)
@@ -82,7 +71,6 @@ class PortfolioService:
             future_capital = 0
             monthly_payment = future_goal / annuity_factor
 
-        # Финальная проверка
         if monthly_payment < 0:
             monthly_payment = 0
 
@@ -99,7 +87,6 @@ class PortfolioService:
     ) -> Dict[str, float]:
         """Определение распределения активов по риск-профилю и сроку"""
 
-        # Определяем горизонт инвестирования
         if term_years <= 3:
             horizon = 'short'
         elif term_years <= 7:
@@ -185,24 +172,30 @@ class PortfolioService:
         all_stocks = self.asset_repo.get_assets_by_type(self.db_session, 'акция')
 
         strategies = {
-            'conservative': ['SBER', 'GAZP'],
-            'moderate': ['SBER', 'GAZP', 'LKOH', 'GMKN'],
-            'aggressive': ['GMKN', 'ROSN', 'MGNT', 'LKOH'],
+            'conservative': ['SBER', 'GAZP', 'LKOH', 'VTBR'],
+            'moderate': ['SBER', 'GAZP', 'LKOH', 'VTBR', 'GMKN', 'ROSN', 'MGNT'],
+            'aggressive': [
+                'SBER',
+                'GAZP',
+                'LKOH',
+                'VTBR',
+                'GMKN',
+                'ROSN',
+                'MGNT',
+                'TCSG',
+                'TATN',
+                'NLMK',
+            ],
         }
 
         selected_tickers = strategies.get(risk_profile, strategies['moderate'])
-        print(f"📊 [DEBUG] Ищем тикеры: {selected_tickers}")
 
-        selected_stocks = [s for s in all_stocks if s.name in selected_tickers]
-        print(f"📊 [DEBUG] Найдено подходящих акций: {len(selected_stocks)}")
+        selected_stocks = [s for s in all_stocks if s.ticker in selected_tickers]
 
         if not selected_stocks:
-            print("⚠️ [WARNING] Нет подходящих акций, берем первые доступные")
             selected_stocks = all_stocks[: min(4, len(all_stocks))]
-            print(f"📊 [DEBUG] Взято первых акций: {len(selected_stocks)}")
 
         weights = [1.0 / len(selected_stocks)] * len(selected_stocks)
-        print(f"📊 [DEBUG] Веса: {weights}")
 
         return self.calculate_stock_quantities(selected_stocks, weights, stock_budget)
 
@@ -220,7 +213,7 @@ class PortfolioService:
                         AssetAllocation(
                             name=stock.name,
                             type='акции',
-                            ticker=stock.name,
+                            ticker=stock.ticker,
                             quantity=quantity,
                             price=stock.price_now,
                             weight=weights[i],
@@ -238,35 +231,35 @@ class PortfolioService:
 
         all_bonds = self.asset_repo.get_assets_by_type(self.db_session, 'облигация')
 
-        # ⚠️ ДОБАВЬТЕ ЭТУ ПРОВЕРКУ
         if not all_bonds:
-            print("⚠️ [WARNING] В базе нет облигаций, возвращаем пустой список")
             return []
 
         if term_years <= 1:
-            selected_bonds = [b for b in all_bonds if 'краткосроч' in b.type.lower()]
+            selected_bonds = [b for b in all_bonds if 'краткосрочная' in b.type]
+
             weights = [0.6, 0.4] if len(selected_bonds) >= 2 else [1.0]
         elif term_years <= 5:
-            short_term = [b for b in all_bonds if 'краткосроч' in b.type.lower()]
-            medium_term = [b for b in all_bonds if 'среднесроч' in b.type.lower()]
+            short_term = [b for b in all_bonds if 'краткосрочная' in b.type]
+            medium_term = [b for b in all_bonds if 'среднесрочная' in b.type]
             selected_bonds = (short_term[:1] + medium_term[:2])[:3]
+
             weights = (
                 [0.3, 0.35, 0.35]
                 if len(selected_bonds) == 3
                 else [1.0 / len(selected_bonds)] * len(selected_bonds)
             )
         else:
-            short_term = [b for b in all_bonds if 'краткосроч' in b.type.lower()]
-            medium_term = [b for b in all_bonds if 'среднесроч' in b.type.lower()]
-            long_term = [b for b in all_bonds if 'долгосроч' in b.type.lower()]
+            short_term = [b for b in all_bonds if 'краткосрочная' in b.type]
+            medium_term = [b for b in all_bonds if 'среднесрочная' in b.type]
+            long_term = [b for b in all_bonds if 'долгосрочная' in b.type]
             selected_bonds = (short_term[:1] + medium_term[:1] + long_term[:1])[:3]
+
             weights = (
                 [0.2, 0.3, 0.5]
                 if len(selected_bonds) == 3
                 else [1.0 / len(selected_bonds)] * len(selected_bonds)
             )
 
-        print(f"📊 [DEBUG] Выбрано облигаций: {len(selected_bonds)}, веса: {weights}")
         return self.calculate_bond_quantities(selected_bonds, weights, bond_budget)
 
     def calculate_bond_quantities(
@@ -274,9 +267,7 @@ class PortfolioService:
     ) -> List[AssetAllocation]:
         """Расчет количества облигаций для покупки"""
 
-        # ⚠️ ДОБАВЬТЕ ЭТУ ПРОВЕРКУ
         if not bonds:
-            print("⚠️ [WARNING] Нет облигаций для расчета, возвращаем пустой список")
             return []
 
         result = []
@@ -288,7 +279,7 @@ class PortfolioService:
                         AssetAllocation(
                             name=bond.name,
                             type='облигации',
-                            ticker=bond.name,
+                            ticker=bond.ticker,
                             quantity=quantity,
                             price=bond.price_now,
                             weight=weights[i],
@@ -297,7 +288,6 @@ class PortfolioService:
                         )
                     )
 
-        print(f"✅ [DEBUG] Итоговое количество облигаций: {len(result)}")
         return result
 
     def select_etf_assets(
@@ -306,22 +296,19 @@ class PortfolioService:
         """Подбор ETF активов (золото, недвижимость)"""
 
         etf_assets = self.asset_repo.get_assets_by_type(self.db_session, asset_type)
-        print(f"📊 [DEBUG] Найдено {asset_type} в базе: {len(etf_assets)}")
 
         if not etf_assets or budget <= 0:
             return []
 
-        # Берем первый доступный актив данного типа
         asset = etf_assets[0]
         if asset.price_now > 0:
             quantity = int(budget / asset.price_now)
             if quantity > 0:
-                print(f"📊 [DEBUG] Выбран актив: {asset.name}, quantity={quantity}")
                 return [
                     AssetAllocation(
                         name=asset.name,
                         type=asset_type,
-                        ticker=asset.name,
+                        ticker=asset.ticker,
                         quantity=quantity,
                         price=asset.price_now,
                         weight=1.0,
@@ -358,11 +345,9 @@ class PortfolioService:
                 total_weight += comp.target_weight
 
         if total_weight == 0 or total_return <= 0:
-            print("⚠️ [WARNING] Нет доходности, возвращаем 0.08")
             return 0.08
 
         final_return = total_return
-        print(f"✅ [DEBUG] Финальная доходность портфеля: {final_return}")
 
         return final_return
 
@@ -373,20 +358,17 @@ class PortfolioService:
         term_months: int,
         inflation_rate: float,
         risk_profile: str,
+        smart_goal: str,
     ) -> PortfolioRecommendation:
         """Построение полной рекомендации по портфелю"""
 
         term_years = term_months / 12
-        print(f"📊 [DEBUG] term_years: {term_years}")
 
-        # Получаем распределение активов
         allocation = self.get_portfolio_allocation(risk_profile, term_years)
-        print(f"📊 [DEBUG] Распределение активов: {allocation}")
 
         composition = []
         total_investment = 0
 
-        # Формируем состав портфеля для каждого типа активов
         for asset_type, target_weight in allocation.items():
             budget = future_value * target_weight
 
@@ -416,10 +398,8 @@ class PortfolioService:
 
             total_investment += actual_amount
 
-        # Рассчитываем ожидаемую доходность портфеля
         expected_return = self.calculate_expected_portfolio_return(composition)
 
-        # Рассчитываем ежемесячный платеж
         monthly_payment_detail = self.calculate_monthly_payment(
             future_goal=future_value,
             years=term_years,
@@ -437,6 +417,7 @@ class PortfolioService:
             time_horizon=(
                 'short' if term_years <= 3 else 'medium' if term_years <= 7 else 'long'
             ),
+            smart_goal=smart_goal,
             total_investment=total_investment,
             expected_portfolio_return=expected_return,
             composition=composition,
@@ -446,7 +427,6 @@ class PortfolioService:
     def calculate_portfolio(self, user_id: str) -> PortfolioCalculationResponse:
         """Основной метод расчета полного инвестиционного плана"""
 
-        # Получаем данные цели из кеша
         goal_data = cache.get_json(f"user:{user_id}:llm_goal")
 
         if not goal_data:
@@ -457,20 +437,20 @@ class PortfolioService:
         term_months = goal_data["term"]
         target_amount = goal_data["sum"]
         initial_capital = goal_data["capital"]
+        smart_goal = goal_data["reason"]
         risk_profile = goal_data.get("risk_profile", "moderate")
 
-        # Расчет с учетом инфляции
         future_value, inflation_rate = self.calculate_future_value_with_inflation(
             goal_sum=target_amount, term_months=term_months
         )
 
-        # Строим полную рекомендацию по портфелю
         recommendation = self.build_portfolio_recommendation(
             future_value=future_value,
             initial_capital=initial_capital,
             term_months=term_months,
             inflation_rate=inflation_rate,
             risk_profile=risk_profile,
+            smart_goal=smart_goal,
         )
 
         return PortfolioCalculationResponse(
