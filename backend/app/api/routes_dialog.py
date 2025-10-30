@@ -24,6 +24,7 @@ async def dialog_chat(
     - если передан message → сразу LLM
     - если передан audio_file → Whisper → LLM
     """
+    print("Начал")
     try:
         if audio_file:
             allowed_extensions = ['.mp3', '.wav', '.m4a', '.flac', '.ogg', '.mp4']
@@ -46,10 +47,11 @@ async def dialog_chat(
                 status_code=400, detail="Нужно передать либо текст, либо аудио"
             )
 
+        print("Отправка в LLM")
         llm_response = send_to_llm(user_id, user_message)
-
+        print(f"ответ от LLM {llm_response}")
         goal_data = parse_llm_goal_response(llm_response)
-
+        print("Прасинг")
         if goal_data:
             if goal_data.term is not None:
                 cache.set_json(f"user:{user_id}:llm_goal", goal_data.dict())

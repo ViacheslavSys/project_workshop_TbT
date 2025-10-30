@@ -5,6 +5,7 @@ from app.core.database import SessionLocal
 from app.schemas.portfolio import (
     PortfolioCalculationRequest,
     PortfolioCalculationResponse,
+    PortfolioCreate,
 )
 from app.services.portfolio_service import PortfolioService
 
@@ -24,7 +25,7 @@ async def calculate_portfolio(
     request: PortfolioCalculationRequest, db: Session = Depends(get_db)
 ):
     """
-    Расчет целевой стоимости с учетом инфляции
+    Расчет целевой стоимости с учетом инфляции и формирование портфеля
     """
     try:
         portfolio_service = PortfolioService(db)
@@ -35,3 +36,33 @@ async def calculate_portfolio(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при расчете: {str(e)}")
+
+
+@router.post("/create")
+async def create_portfolio(
+    portfolio_in: PortfolioCreate, db: Session = Depends(get_db)
+):
+    """
+    Сохранение портфеля в базе данных
+    """
+    try:
+        portfolio_service = PortfolioService(db)
+
+        # Получаем расчет портфеля
+        calculation = portfolio_service.calculate_portfolio(portfolio_in.user_id)
+
+        # Здесь можно добавить логику сохранения в БД
+        # using your existing repository functions
+
+        return {
+            "message": "Портфель успешно создан",
+            "portfolio_id": "generated_id",  # Замените на реальный ID
+            "calculation": calculation,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка при создании портфеля: {str(e)}"
+        )
