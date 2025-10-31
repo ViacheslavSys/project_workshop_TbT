@@ -641,9 +641,6 @@ function MessageBubble({
   portfolioExplanation,
   portfolioExplanationError,
   portfolioExplanationLoading,
-  portfolioAnalysis,
-  portfolioAnalysisError,
-  portfolioAnalysisLoading,
 }: {
   sender: MessageSender;
   type: string;
@@ -676,10 +673,7 @@ function MessageBubble({
         isAuth={isAuth}
         explanation={portfolioExplanation}
         explanationError={portfolioExplanationError}
-        explanationLoading={portfolioExplanationLoading}
-        analysis={portfolioAnalysis}
-        analysisError={portfolioAnalysisError}
-        analysisLoading={portfolioAnalysisLoading}
+        explanationLoading={portfolioExplanationLoading}        
       />
     );
   } else if (type === "portfolio_analysis" && !isUser) { // ДОБАВЬТЕ ЭТОТ БЛОК
@@ -1281,6 +1275,17 @@ function PortfolioAnalysisMessage({ analysis }: { analysis: string }) {
         );
         return;
       }
+
+      // Обработка формул (строки с = и математическими операциями) - удаляем этот блок
+      // так как он конфликтует с обработкой формул в обратных кавычках
+      // if (content.includes('=') && (content.includes('×') || content.includes('+') || content.includes('−') || content.includes('(') || content.includes('≈'))) {
+      //   elements.push(
+      //     <div key={index} className="bg-gray-900/30 rounded-lg p-3 my-2 font-mono text-sm border border-gray-700 text-center">
+      //       {renderInlineFormatting(content)}
+      //     </div>
+      //   );
+      //   return;
+      // }
 
       // Обработка списков
       if (content.startsWith('- ') || content.startsWith('• ') || /^\d+\./.test(content)) {
