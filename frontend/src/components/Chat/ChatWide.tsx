@@ -704,41 +704,90 @@ function RiskFormMessage({
 }
 
 function RiskResultMessage({ result }: { result: RiskProfileResult }) {
-  const { profile, conservative_score, moderate_score, aggressive_score, investment_horizon } =
-    result;
+  const {
+    profile,
+    conservative_score,
+    moderate_score,
+    aggressive_score,
+    investment_horizon,
+  } = result;
+
+  const profileLabelMap: Record<string, string> = {
+    conservative: "Консервативный",
+    "консервативный": "Консервативный",
+    moderate: "Умеренный",
+    "умеренный": "Умеренный",
+    aggressive: "Агрессивный",
+    "агрессивный": "Агрессивный",
+  };
+
+  const normalizedProfile = (() => {
+    const value = profile?.trim() ?? "";
+    const key = value.toLowerCase();
+    return profileLabelMap[key] ??(value || "—");
+  })();
+
+  const horizonLabel = investment_horizon?.trim() || "—";
+
+  const rows = [
+    { label: "Консервативный", value: conservative_score },
+    { label: "Умеренный", value: moderate_score },
+    { label: "Агрессивный", value: aggressive_score },
+  ];
 
   return (
-    <div className="space-y-3 text-sm">
-      <div className="text-xs uppercase text-muted">Ваш риск-профиль</div>
-      <div className="flex items-center gap-2">
-        <span className="rounded-lg border border-border bg-white/10 px-2 py-1 text-sm font-semibold">
-          {profile}
+    <div className="w-full max-w-[720px] overflow-hidden rounded-xl border border-border bg-white/5 shadow-sm">
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/10 px-4 py-3">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Риск-профиль
         </span>
-        {investment_horizon ? (
-          <span className="text-xs text-muted">Горизонт: {investment_horizon}</span>
-        ) : null}
+        <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">
+          {normalizedProfile}
+        </span>
       </div>
-      <div className="grid grid-cols-3 gap-2 text-center text-xs">
-        <RiskScoreCard label="Консервативный" value={conservative_score} />
-        <RiskScoreCard label="Умеренный" value={moderate_score} />
-        <RiskScoreCard label="Агрессивный" value={aggressive_score} />
-      </div>
-      <div className="rounded-lg border border-border bg-white/5 p-3 text-xs text-muted">
-        Мы будем использовать полученный профиль, чтобы подобрать подходящий портфель
-        инструментов и уровень риска.
+
+      <div className="space-y-4 px-4 py-4 text-sm text-text">
+        <div className="text-xs text-muted">
+          Горизонт инвестирования:
+          <span className="ml-1 text-sm font-medium text-text">{horizonLabel}</span>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-white/10">
+          <table className="w-full border-collapse text-sm">
+            <thead className="bg-white/5 text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-4 py-3 text-left font-semibold">Категория</th>
+                <th className="px-4 py-3 text-right font-semibold">Баллы</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr
+                  key={row.label}
+                  className={classNames(
+                    "bg-transparent text-sm text-text",
+                    index !== 0 ? "border-t border-white/10" : undefined,
+                  )}
+                >
+                  <td className="px-4 py-3 text-muted">{row.label}</td>
+                  <td className="px-4 py-3 text-right text-base font-semibold text-text">
+                    {row.value}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="rounded-lg bg-white/5 px-4 py-3 text-xs text-muted">
+          Мы используем ваш риск-профиль, чтобы подобрать подходящий инвестиционный портфель на
+          следующем шаге.
+        </div>
       </div>
     </div>
   );
 }
 
-function RiskScoreCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border border-border bg-white/5 p-2">
-      <div className="text-muted">{label}</div>
-      <div className="text-base font-semibold text-text">{value}</div>
-    </div>
-  );
-}
 
 function PortfolioMessage({ portfolio, isAuth }: { portfolio: PortfolioRecommendation | null; isAuth: boolean }) {
   if (!portfolio) {
