@@ -1,7 +1,5 @@
 from typing import Dict, List, Tuple
 
-from sqlalchemy.orm import Session
-
 from app.core.redis_cache import cache
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.inflation_repository import InflationRepository
@@ -12,6 +10,7 @@ from app.schemas.portfolio import (
     PortfolioComposition,
     PortfolioRecommendation,
 )
+from sqlalchemy.orm import Session
 
 
 class PortfolioService:
@@ -88,9 +87,9 @@ class PortfolioService:
         """Определение распределения активов по риск-профилю и сроку"""
 
         profile_mapping = {
-            'Консервативный': 'conservative',
-            'Умеренный': 'moderate',
-            'Агрессивный': 'aggressive',
+            "Консервативный": "conservative",
+            "Умеренный": "moderate",
+            "Агрессивный": "aggressive",
         }
 
         risk_profile_en = profile_mapping.get(risk_profile, risk_profile.lower())
@@ -98,79 +97,79 @@ class PortfolioService:
         print(f"📊 [DEBUG] Профиль риска: {risk_profile} -> {risk_profile_en}")
 
         if term_years <= 3:
-            horizon = 'short'
+            horizon = "short"
         elif term_years <= 7:
-            horizon = 'medium'
+            horizon = "medium"
         else:
-            horizon = 'long'
+            horizon = "long"
 
         print(f"📊 [DEBUG] Горизонт инвестирования: {horizon}")
 
         rules = {
-            'conservative': {
-                'short': {
-                    'акции': 0.1,
-                    'облигации': 0.7,
-                    'золото': 0.1,
-                    'недвижимость': 0.1,
+            "conservative": {
+                "short": {
+                    "акции": 0.1,
+                    "облигации": 0.7,
+                    "золото": 0.1,
+                    "недвижимость": 0.1,
                 },
-                'medium': {
-                    'акции': 0.2,
-                    'облигации': 0.65,
-                    'золото': 0.08,
-                    'недвижимость': 0.07,
+                "medium": {
+                    "акции": 0.2,
+                    "облигации": 0.65,
+                    "золото": 0.08,
+                    "недвижимость": 0.07,
                 },
-                'long': {
-                    'акции': 0.45,
-                    'облигации': 0.45,
-                    'золото': 0.05,
-                    'недвижимость': 0.05,
-                },
-            },
-            'moderate': {
-                'short': {
-                    'акции': 0.1,
-                    'облигации': 0.75,
-                    'золото': 0.08,
-                    'недвижимость': 0.07,
-                },
-                'medium': {
-                    'акции': 0.4,
-                    'облигации': 0.5,
-                    'золото': 0.05,
-                    'недвижимость': 0.05,
-                },
-                'long': {
-                    'акции': 0.55,
-                    'облигации': 0.4,
-                    'золото': 0.03,
-                    'недвижимость': 0.02,
+                "long": {
+                    "акции": 0.45,
+                    "облигации": 0.45,
+                    "золото": 0.05,
+                    "недвижимость": 0.05,
                 },
             },
-            'aggressive': {
-                'short': {
-                    'акции': 0.45,
-                    'облигации': 0.45,
-                    'золото': 0.05,
-                    'недвижимость': 0.05,
+            "moderate": {
+                "short": {
+                    "акции": 0.1,
+                    "облигации": 0.75,
+                    "золото": 0.08,
+                    "недвижимость": 0.07,
                 },
-                'medium': {
-                    'акции': 0.55,
-                    'облигации': 0.4,
-                    'золото': 0.03,
-                    'недвижимость': 0.02,
+                "medium": {
+                    "акции": 0.4,
+                    "облигации": 0.5,
+                    "золото": 0.05,
+                    "недвижимость": 0.05,
                 },
-                'long': {
-                    'акции': 0.60,
-                    'облигации': 0.35,
-                    'золото': 0.03,
-                    'недвижимость': 0.02,
+                "long": {
+                    "акции": 0.55,
+                    "облигации": 0.4,
+                    "золото": 0.03,
+                    "недвижимость": 0.02,
+                },
+            },
+            "aggressive": {
+                "short": {
+                    "акции": 0.45,
+                    "облигации": 0.45,
+                    "золото": 0.05,
+                    "недвижимость": 0.05,
+                },
+                "medium": {
+                    "акции": 0.55,
+                    "облигации": 0.4,
+                    "золото": 0.03,
+                    "недвижимость": 0.02,
+                },
+                "long": {
+                    "акции": 0.60,
+                    "облигации": 0.35,
+                    "золото": 0.03,
+                    "недвижимость": 0.02,
                 },
             },
         }
 
         allocation = rules.get(risk_profile_en, {}).get(
-            horizon, rules['moderate']['medium']
+            horizon, rules["moderate"]["medium"]
         )
         return allocation
 
@@ -179,26 +178,26 @@ class PortfolioService:
     ) -> List[AssetAllocation]:
         """Подбор акций по риск-профилю"""
 
-        all_stocks = self.asset_repo.get_assets_by_type(self.db_session, 'акция')
+        all_stocks = self.asset_repo.get_assets_by_type(self.db_session, "акция")
 
         strategies = {
-            'conservative': ['SBER', 'GAZP', 'LKOH', 'VTBR'],
-            'moderate': ['SBER', 'GAZP', 'LKOH', 'VTBR', 'GMKN', 'ROSN', 'MGNT'],
-            'aggressive': [
-                'SBER',
-                'GAZP',
-                'LKOH',
-                'VTBR',
-                'GMKN',
-                'ROSN',
-                'MGNT',
-                'TCSG',
-                'TATN',
-                'NLMK',
+            "conservative": ["SBER", "GAZP", "LKOH", "VTBR"],
+            "moderate": ["SBER", "GAZP", "LKOH", "VTBR", "GMKN", "ROSN", "MGNT"],
+            "aggressive": [
+                "SBER",
+                "GAZP",
+                "LKOH",
+                "VTBR",
+                "GMKN",
+                "ROSN",
+                "MGNT",
+                "TCSG",
+                "TATN",
+                "NLMK",
             ],
         }
 
-        selected_tickers = strategies.get(risk_profile, strategies['moderate'])
+        selected_tickers = strategies.get(risk_profile, strategies["moderate"])
 
         selected_stocks = [s for s in all_stocks if s.ticker in selected_tickers]
 
@@ -222,7 +221,7 @@ class PortfolioService:
                     result.append(
                         AssetAllocation(
                             name=stock.name,
-                            type='акции',
+                            type="акции",
                             ticker=stock.ticker,
                             quantity=quantity,
                             price=stock.price_now,
@@ -239,18 +238,18 @@ class PortfolioService:
     ) -> List[AssetAllocation]:
         """Подбор облигаций по сроку инвестирования"""
 
-        all_bonds = self.asset_repo.get_assets_by_type(self.db_session, 'облигация')
+        all_bonds = self.asset_repo.get_assets_by_type(self.db_session, "облигация")
 
         if not all_bonds:
             return []
 
         if term_years <= 1:
-            selected_bonds = [b for b in all_bonds if 'краткосрочная' in b.type]
+            selected_bonds = [b for b in all_bonds if "краткосрочная" in b.type]
 
             weights = [0.6, 0.4] if len(selected_bonds) >= 2 else [1.0]
         elif term_years <= 5:
-            short_term = [b for b in all_bonds if 'краткосрочная' in b.type]
-            medium_term = [b for b in all_bonds if 'среднесрочная' in b.type]
+            short_term = [b for b in all_bonds if "краткосрочная" in b.type]
+            medium_term = [b for b in all_bonds if "среднесрочная" in b.type]
             selected_bonds = (short_term[:1] + medium_term[:2])[:3]
 
             weights = (
@@ -259,9 +258,9 @@ class PortfolioService:
                 else [1.0 / len(selected_bonds)] * len(selected_bonds)
             )
         else:
-            short_term = [b for b in all_bonds if 'краткосрочная' in b.type]
-            medium_term = [b for b in all_bonds if 'среднесрочная' in b.type]
-            long_term = [b for b in all_bonds if 'долгосрочная' in b.type]
+            short_term = [b for b in all_bonds if "краткосрочная" in b.type]
+            medium_term = [b for b in all_bonds if "среднесрочная" in b.type]
+            long_term = [b for b in all_bonds if "долгосрочная" in b.type]
             selected_bonds = (short_term[:1] + medium_term[:1] + long_term[:1])[:3]
 
             weights = (
@@ -288,7 +287,7 @@ class PortfolioService:
                     result.append(
                         AssetAllocation(
                             name=bond.name,
-                            type='облигации',
+                            type="облигации",
                             ticker=bond.ticker,
                             quantity=quantity,
                             price=bond.price_now,
@@ -382,14 +381,14 @@ class PortfolioService:
         for asset_type, target_weight in allocation.items():
             budget = future_value * target_weight
 
-            if asset_type == 'акции':
+            if asset_type == "акции":
                 assets = self.select_stocks_by_risk(risk_profile, budget)
-            elif asset_type == 'облигации':
+            elif asset_type == "облигации":
                 assets = self.select_bonds_by_term(term_years, budget)
-            elif asset_type == 'золото':
-                assets = self.select_etf_assets('золото', budget)
-            elif asset_type == 'недвижимость':
-                assets = self.select_etf_assets('недвижимость', budget)
+            elif asset_type == "золото":
+                assets = self.select_etf_assets("золото", budget)
+            elif asset_type == "недвижимость":
+                assets = self.select_etf_assets("недвижимость", budget)
             else:
                 assets = []
 
@@ -425,7 +424,7 @@ class PortfolioService:
             future_value_with_inflation=future_value,
             risk_profile=risk_profile,
             time_horizon=(
-                'short' if term_years <= 3 else 'medium' if term_years <= 7 else 'long'
+                "short" if term_years <= 3 else "medium" if term_years <= 7 else "long"
             ),
             smart_goal=smart_goal,
             total_investment=total_investment,

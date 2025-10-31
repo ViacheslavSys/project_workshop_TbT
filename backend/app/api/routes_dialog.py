@@ -1,12 +1,11 @@
 import os
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-
 from app.core.redis_cache import cache
 from app.schemas.chat import ChatResponse
 from app.services.llm_service import parse_llm_goal_response, send_to_llm
 from app.services.whisper_processor import whisper_processor
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 router = APIRouter(prefix="/dialog", tags=["dialog"])
 
@@ -27,7 +26,7 @@ async def dialog_chat(
     print("Начал")
     try:
         if audio_file:
-            allowed_extensions = ['.mp3', '.wav', '.m4a', '.flac', '.ogg', '.mp4']
+            allowed_extensions = [".mp3", ".wav", ".m4a", ".flac", ".ogg", ".mp4"]
             file_extension = os.path.splitext(audio_file.filename)[1].lower()
             if file_extension not in allowed_extensions:
                 raise HTTPException(

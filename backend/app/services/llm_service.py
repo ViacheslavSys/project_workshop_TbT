@@ -2,11 +2,10 @@ import json
 import os
 
 import dotenv
-from openai import OpenAI
-
 from app.core.redis_cache import cache
 from app.schemas.chat import Message
 from app.schemas.risk_profile import LLMGoalData
+from openai import OpenAI
 
 dotenv.load_dotenv()
 
@@ -28,16 +27,16 @@ def _extract_json_from_text(text: str) -> tuple[str, str | None]:
     # Ищем любой JSON в тексте (самый простой способ)
     try:
         # Пытаемся найти JSON объект
-        start_idx = text.find('{')
-        end_idx = text.rfind('}')
+        start_idx = text.find("{")
+        end_idx = text.rfind("}")
 
         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-            json_str = text[start_idx: end_idx + 1]
+            json_str = text[start_idx : end_idx + 1]
             # Проверяем, что это валидный JSON
             json.loads(json_str)  # Если не валиден, выбросит исключение
             json_data = json_str
             # Удаляем JSON из текста
-            cleaned_text = text[:start_idx] + text[end_idx + 1:]
+            cleaned_text = text[:start_idx] + text[end_idx + 1 :]
             # Очищаем текст
             cleaned_text = cleaned_text.strip()
     except Exception as e:
@@ -64,8 +63,8 @@ def send_to_llm(user_id: str, user_message: str) -> str:
     if not response:
         return ""
 
-    if response.startswith('\n'):
-        response = response.lstrip('\n')
+    if response.startswith("\n"):
+        response = response.lstrip("\n")
 
     response = response.lstrip()
 

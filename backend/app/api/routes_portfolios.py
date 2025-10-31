@@ -1,6 +1,3 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-
 from app.core.database import SessionLocal
 from app.schemas.portfolio import (
     PortfolioAnalysisRequest,
@@ -11,6 +8,8 @@ from app.schemas.portfolio import (
 )
 from app.services.portfolio_analysis_service import PortfolioAnalysisService
 from app.services.portfolio_service import PortfolioService
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
 

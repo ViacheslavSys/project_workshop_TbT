@@ -1,6 +1,5 @@
-from sqlalchemy import Column, Float, Integer, String
-
 from app.core.database import Base
+from sqlalchemy import Column, Float, Integer, String
 
 
 class Asset(Base):
