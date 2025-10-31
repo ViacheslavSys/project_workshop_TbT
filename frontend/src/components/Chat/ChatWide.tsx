@@ -1,13 +1,10 @@
 ﻿import React, { useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   calculatePortfolio,
   clarifyRiskProfile,
   fetchRiskQuestions,
-  fetchPortfolioAnalysis,
   getAnonymousUserId,
   sendChatAudio,
   sendChatText,
@@ -294,23 +291,6 @@ export default function ChatWide() {
     } finally {
       setPending(false);
     }
-  const handleRequestPortfolioExplanation = useCallback(async () => {
-    if (portfolioExplanationLoading) return;
-    const userId = userIdRef.current || getAnonymousUserId();
-    userIdRef.current = userId;
-
-    setPortfolioExplanationError(null);
-    setPortfolioExplanationLoading(true);
-    try {
-      const explanation = await fetchPortfolioAnalysis(userId);
-      setPortfolioExplanation(explanation);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось получить объяснение расчётов";
-      setPortfolioExplanationError(message);
-    } finally {
-      setPortfolioExplanationLoading(false);
-    }
-  }, [fetchPortfolioAnalysis, getAnonymousUserId, portfolioExplanationLoading]);
 
   }, [appendMessage, dispatch, enqueueRiskQuestion]);
 
@@ -514,7 +494,6 @@ export default function ChatWide() {
                     content={message.content}
                     isAuth={isAuth}
                     onRiskAnswer={handleRiskAnswer}
-                    onRequestPortfolioExplanation={handleRequestPortfolioExplanation}
                     portfolioExplanation={portfolioExplanation}
                     portfolioExplanationError={portfolioExplanationError}
                     portfolioExplanationLoading={portfolioExplanationLoading}
@@ -840,11 +819,7 @@ function RiskResultMessage({ result }: { result: RiskProfileResult }) {
 
 function PortfolioMessage({
   portfolio,
-  isAuth,
-  onRequestExplanation,
-  explanation,
-  explanationError,
-  explanationLoading,
+  isAuth
 }: {
   portfolio: PortfolioRecommendation | null;
   isAuth: boolean;

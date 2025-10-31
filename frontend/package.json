@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "exit 0",
+    "build": "tsc -b && vite build",
     "test": "echo \"Тесты пока не настроены\" && exit 0",
     "lint": "eslint .",
     "preview": "vite preview"
