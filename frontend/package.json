@@ -12,8 +12,10 @@
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.9.0",
+    "@types/katex": "^0.16.7",
     "axios": "^1.12.2",
     "classnames": "^2.5.1",
+    "katex": "^0.16.25",
     "react": "^19.1.1",
     "react-chatbot-kit": "^2.2.2",
     "react-dom": "^19.1.1",

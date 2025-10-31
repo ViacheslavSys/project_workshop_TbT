@@ -1,6 +1,7 @@
 version: "3.9"
 
 services:
+  # База данных
   db:
     image: postgres:15
     container_name: my_postgres
@@ -14,6 +15,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # Redis
   redis:
     image: redis:7
     container_name: my_redis
@@ -21,29 +23,54 @@ services:
     ports:
       - "6379:6379"
 
-  app:
-    build: .
-    container_name: my_app
+  # Бэкенд
+  backend:
+    build: ./backend
+    container_name: my_backend
     depends_on:
       - db
+      - redis
     environment:
+      # База данных
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      REDIS_URL: ${REDIS_URL}
-      REDIS_TTL: ${REDIS_TTL} 
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      REDIS_TTL: ${REDIS_TTL}
+      
+      # OpenRouter
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      MODEL: ${MODEL}
+      MODEL_ANALYSIS: ${MODEL_ANALYSIS}
     volumes:
-      - .:/app
+      - ./backend:/app
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
       - "8000:8000"
 
+  # Фронтенд
+  frontend:
+    build: ./frontend
+    container_name: my_frontend
+    depends_on:
+      - backend
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+  # Celery Worker
   celery_worker:
-    build: .
+    build: ./backend
     container_name: celery_worker
     restart: always
     depends_on:
@@ -53,13 +80,17 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      REDIS_URL: ${REDIS_URL}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      MODEL: ${MODEL}
+      MODEL_ANALYSIS: ${MODEL_ANALYSIS}
     command: celery -A app.core.celery_app worker --loglevel=info
 
+  # Celery Beat
   celery_beat:
-    build: .
+    build: ./backend
     container_name: celery_beat
     restart: always
     depends_on:
@@ -70,10 +101,13 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      REDIS_URL: ${REDIS_URL}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      MODEL: ${MODEL}
+      MODEL_ANALYSIS: ${MODEL_ANALYSIS}
     command: celery -A app.core.celery_app beat --loglevel=info
-  
+
 volumes:
   postgres_data:

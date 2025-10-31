@@ -250,10 +250,9 @@ export async function fetchPortfolioAnalysis(userId: string) {
     },
     body: JSON.stringify({ user_id: userId }),
   });
-  const data = await handleResponse<PortfolioAnalysisResponse>(res);
+  const data = await handleResponse<PortfolioAnalysisResponse>(res); // Исправлено с PortfolioAnalysisReponse на PortfolioAnalysisResponse
   return data.analysis;
 }
-
 let cachedAnonId: string | null = null;
 
 export function getAnonymousUserId() {
@@ -265,3 +264,14 @@ export function getAnonymousUserId() {
   }
   return cachedAnonId;
 }
+export const analyzePortfolio = async (userId: string): Promise<PortfolioAnalysisResponse> => {
+  const res = await fetch(buildUrl("/portfolios/analyze"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  return handleResponse<PortfolioAnalysisResponse>(res);
+};
+
