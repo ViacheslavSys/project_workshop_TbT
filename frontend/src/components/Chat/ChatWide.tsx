@@ -74,6 +74,10 @@ export default function ChatWide() {
   const [portfolioExplanation, setPortfolioExplanation] = useState<string | null>(null);
   const [portfolioExplanationError, setPortfolioExplanationError] = useState<string | null>(null);
   const [portfolioExplanationLoading, setPortfolioExplanationLoading] = useState(false);
+  // В разделе с другими useState, добавьте:
+  const [portfolioAnalysis, setPortfolioAnalysis] = useState<string | null>(null);
+  const [portfolioAnalysisLoading, setPortfolioAnalysisLoading] = useState(false);
+  const [portfolioAnalysisError, setPortfolioAnalysisError] = useState<string | null>(null);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const userIdRef = useRef<string>("");
@@ -552,7 +556,9 @@ export default function ChatWide() {
                   portfolioExplanation={portfolioExplanation}
                   portfolioExplanationError={portfolioExplanationError}
                   portfolioExplanationLoading={portfolioExplanationLoading}
-                  
+                  portfolioAnalysis={portfolioAnalysis}
+                  portfolioAnalysisError={portfolioAnalysisError}
+                  portfolioAnalysisLoading={portfolioAnalysisLoading}
                 />
                 ))}
                 {typing ? (
@@ -634,7 +640,10 @@ function MessageBubble({
   onRiskAnswer,
   portfolioExplanation,
   portfolioExplanationError,
-  portfolioExplanationLoading,  
+  portfolioExplanationLoading,
+  portfolioAnalysis,
+  portfolioAnalysisError,
+  portfolioAnalysisLoading,
 }: {
   sender: MessageSender;
   type: string;
@@ -644,7 +653,9 @@ function MessageBubble({
   portfolioExplanation?: string | null;
   portfolioExplanationError?: string | null;
   portfolioExplanationLoading?: boolean;
-
+  portfolioAnalysis?: string | null;
+  portfolioAnalysisError?: string | null;
+  portfolioAnalysisLoading?: boolean;
 }) {
   const isUser = sender === "user";
   let body: React.ReactNode;
@@ -665,7 +676,10 @@ function MessageBubble({
         isAuth={isAuth}
         explanation={portfolioExplanation}
         explanationError={portfolioExplanationError}
-        explanationLoading={portfolioExplanationLoading}        
+        explanationLoading={portfolioExplanationLoading}
+        analysis={portfolioAnalysis}
+        analysisError={portfolioAnalysisError}
+        analysisLoading={portfolioAnalysisLoading}
       />
     );
   } else if (type === "portfolio_analysis" && !isUser) { // ДОБАВЬТЕ ЭТОТ БЛОК
@@ -1267,17 +1281,6 @@ function PortfolioAnalysisMessage({ analysis }: { analysis: string }) {
         );
         return;
       }
-
-      // Обработка формул (строки с = и математическими операциями) - удаляем этот блок
-      // так как он конфликтует с обработкой формул в обратных кавычках
-      // if (content.includes('=') && (content.includes('×') || content.includes('+') || content.includes('−') || content.includes('(') || content.includes('≈'))) {
-      //   elements.push(
-      //     <div key={index} className="bg-gray-900/30 rounded-lg p-3 my-2 font-mono text-sm border border-gray-700 text-center">
-      //       {renderInlineFormatting(content)}
-      //     </div>
-      //   );
-      //   return;
-      // }
 
       // Обработка списков
       if (content.startsWith('- ') || content.startsWith('• ') || /^\d+\./.test(content)) {
