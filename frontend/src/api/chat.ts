@@ -176,6 +176,84 @@ export async function fetchRiskResult(userId: string) {
   return handleResponse<RiskProfileResult>(res);
 }
 
+export type MonthlyPaymentDetail = {
+  monthly_payment: number;
+  future_capital: number;
+  total_months: number;
+  monthly_rate: number;
+  annuity_factor: number;
+};
+
+export type PortfolioAssetAllocation = {
+  name: string;
+  type: string;
+  ticker: string;
+  quantity: number;
+  price: number;
+  weight: number;
+  amount: number;
+  expected_return?: number | null;
+};
+
+export type PortfolioComposition = {
+  asset_type: string;
+  target_weight: number;
+  actual_weight: number;
+  amount: number;
+  assets: PortfolioAssetAllocation[];
+};
+
+export type PortfolioRecommendation = {
+  target_amount: number;
+  initial_capital: number;
+  investment_term_months: number;
+  annual_inflation_rate: number;
+  future_value_with_inflation: number;
+  risk_profile: string;
+  time_horizon: string;
+  smart_goal: string;
+  total_investment: number;
+  expected_portfolio_return: number;
+  composition: PortfolioComposition[];
+  monthly_payment_detail: MonthlyPaymentDetail;
+};
+
+export type PortfolioCalculationResponse = {
+  target_amount: number;
+  initial_capital: number;
+  investment_term_months: number;
+  annual_inflation_rate: number;
+  future_value_with_inflation: number;
+  recommendation?: PortfolioRecommendation | null;
+};
+
+export type PortfolioAnalysisResponse = {
+  analysis: string;
+};
+
+export async function calculatePortfolio(userId: string) {
+  const res = await fetch(buildUrl("/portfolios/calculate"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  return handleResponse<PortfolioCalculationResponse>(res);
+}
+
+export async function fetchPortfolioAnalysis(userId: string) {
+  const res = await fetch(buildUrl("/portfolios/analyze"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  const data = await handleResponse<PortfolioAnalysisResponse>(res);
+  return data.analysis;
+}
+
 let cachedAnonId: string | null = null;
 
 export function getAnonymousUserId() {

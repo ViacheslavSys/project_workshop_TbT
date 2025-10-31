@@ -2,12 +2,14 @@
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
+  calculatePortfolio,
   clarifyRiskProfile,
   fetchRiskQuestions,
   getAnonymousUserId,
   sendChatAudio,
   sendChatText,
   submitRiskAnswers,
+  type PortfolioRecommendation,
   type RiskClarifyingQuestion,
   type RiskQuestion,
   type RiskProfileResult,
@@ -34,12 +36,15 @@ type RiskResponsePayload =
   | { kind: "clarification"; code: string; answers: string[]; text: string };
 
 const INITIAL_BOT_MESSAGE =
-  "Привет! Расскажите, для какой цели вы копите капитал — например, на жильё, пассивный доход или образование. Это поможет подобрать оптимальный инвестиционный портфель.";
+  "Привет! Давайте сформулируем цель по SMART: расскажите про сумму, сроки, стартовый капитал и зачем вы копите. Я помогу сохранить всё в удобном виде.";
 const steps = [
   { id: "goals" as const, label: "Цель по SMART" },
   { id: "risk" as const, label: "Риск-профиль" },
   { id: "portfolio" as const, label: "Инвестпортфель" },
 ];
+
+const GOAL_SUMMARY_PREFIX = "Отлично! Я понял вашу цель:";
+const GOAL_SUMMARY_SUFFIX = "Теперь перейдем к определению вашего риск-профиля.";
 
 function classNames(...cls: Array<string | false | null | undefined>) {
   return cls.filter(Boolean).join(" ");
@@ -57,16 +62,21 @@ export default function ChatWide() {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [, setPending] = useState(false);
   const [riskQuestions, setRiskQuestions] = useState<RiskQuestion[]>([]);
   const [riskAnswers, setRiskAnswers] = useState<Record<number, string>>({});
   const [currentRiskIndex, setCurrentRiskIndex] = useState<number>(-1);
   const [clarifyingQuestions, setClarifyingQuestions] = useState<RiskClarifyingQuestion[]>([]);
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
+  const [portfolioExplanation, setPortfolioExplanation] = useState<string | null>(null);
+  const [portfolioExplanationError, setPortfolioExplanationError] = useState<string | null>(null);
+  const [portfolioExplanationLoading, setPortfolioExplanationLoading] = useState(false);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const userIdRef = useRef<string>("");
   const initialMessageRef = useRef(false);
+  const goalSummaryHandledMessageIdRef = useRef<string | null>(null);
+  const portfolioRequestedRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recorderChunksRef = useRef<BlobPart[]>([]);
 
@@ -109,6 +119,10 @@ export default function ChatWide() {
     if (!text) return;
     const userId = userIdRef.current || getAnonymousUserId();
     userIdRef.current = userId;
+
+    setPortfolioExplanation(null);
+    setPortfolioExplanationError(null);
+    setPortfolioExplanationLoading(false);
 
     appendMessage("user", "message", text);
     setDraft("");
@@ -238,15 +252,22 @@ export default function ChatWide() {
     allowMultiple: false,
   });
 
-  const enqueueRiskQuestion = (payload: RiskQuestionMessagePayload) => {
-    appendMessage("ai", "risk_question", payload);
-  };
+  const enqueueRiskQuestion = useCallback(
+    (payload: RiskQuestionMessagePayload) => {
+      appendMessage("ai", "risk_question", payload);
+    },
+    [appendMessage],
+  );
 
-  const handleStartRisk = async () => {
+  const handleStartRisk = useCallback(async () => {
+    portfolioRequestedRef.current = false;
     const userId = userIdRef.current || getAnonymousUserId();
     userIdRef.current = userId;
     setError(null);
     setPending(true);
+    setPortfolioExplanation(null);
+    setPortfolioExplanationError(null);
+    setPortfolioExplanationLoading(false);
     dispatch(setStage("risk"));
     appendMessage("ai", "message", "Запускаю тестирование на риск-профиль.");
     try {
@@ -270,7 +291,66 @@ export default function ChatWide() {
     } finally {
       setPending(false);
     }
-  };
+
+  }, [appendMessage, dispatch, enqueueRiskQuestion]);
+
+  useEffect(() => {
+    if (stage !== "goals") return;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.sender !== "ai" || message.type !== "message") continue;
+      const text =
+        typeof message.content === "string"
+          ? message.content
+          : null;
+      if (!text) continue;
+      const normalized = text.replace(/\s+/g, " ").trim();
+      if (
+        !normalized.startsWith(GOAL_SUMMARY_PREFIX) ||
+        !normalized.endsWith(GOAL_SUMMARY_SUFFIX)
+      ) {
+        continue;
+      }
+      if (goalSummaryHandledMessageIdRef.current === message.id) return;
+      goalSummaryHandledMessageIdRef.current = message.id;
+      void handleStartRisk();
+      return;
+    }
+  }, [messages, stage, handleStartRisk]);
+
+  const requestPortfolioRecommendation = useCallback(async () => {
+    if (portfolioRequestedRef.current) return;
+    portfolioRequestedRef.current = true;
+
+    const userId = userIdRef.current || getAnonymousUserId();
+    userIdRef.current = userId;
+
+    dispatch(setTyping(true));
+    setPending(true);
+    setError(null);
+
+    try {
+      const result = await calculatePortfolio(userId);
+      if (result.recommendation) {
+        appendMessage("ai", "portfolio_recommendation", result.recommendation);
+      } else {
+        appendMessage(
+          "ai",
+          "message",
+          "Пока не удалось получить инвестиционную рекомендацию. Попробуйте обновить данные или повторить расчёт позже.",
+        );
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Не удалось рассчитать портфель.";
+      appendMessage("ai", "message", `Ошибка: ${message}`);
+      setError(message);
+      portfolioRequestedRef.current = false;
+    } finally {
+      dispatch(setTyping(false));
+      setPending(false);
+    }
+  }, [appendMessage, dispatch]);
 
   const finalizeRiskAnswers = async (answers: Record<number, string>) => {
     const userId = userIdRef.current || getAnonymousUserId();
@@ -292,7 +372,7 @@ export default function ChatWide() {
           enqueueRiskQuestion(mapClarifyingQuestion(clarifying));
         });
       } else {
-        handleRiskResult(result.result);
+        await handleRiskResult(result.result);
       }
     } catch (err) {
       const message =
@@ -320,7 +400,7 @@ export default function ChatWide() {
       }));
       const result = await clarifyRiskProfile(userId, payload);
       if (result.stage === "final") {
-        handleRiskResult(result.result);
+        await handleRiskResult(result.result);
       }
     } catch (err) {
       const message =
@@ -333,14 +413,15 @@ export default function ChatWide() {
     }
   };
 
-  const handleRiskResult = (result: RiskProfileResult) => {
+  const handleRiskResult = async (result: RiskProfileResult) => {
     appendMessage("ai", "risk_result", result);
     dispatch(setStage("portfolio"));
     appendMessage(
       "ai",
       "message",
-      "На основе вашего риск-профиля мы подготовим инвестиционный портфель и покажем его в следующем блоке чата.",
+      "Отлично! Зафиксировал ваш риск-профиль и подбираю инвестиционный план.",
     );
+    await requestPortfolioRecommendation();
   };
 
   const handleRiskAnswer = async (payload: RiskResponsePayload) => {
@@ -394,11 +475,7 @@ export default function ChatWide() {
                     "w-full rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/5",
                     stage === item.id ? "bg-white/10 text-text" : "text-muted",
                   )}
-                  onClick={() => {
-                    if (item.id === "risk") handleStartRisk();
-                    if (item.id === "goals") dispatch(setStage("goals"));
-                  }}
-                  disabled={pending && item.id === "risk"}
+                  disabled
                 >
                   {item.label}
                 </button>
@@ -406,8 +483,8 @@ export default function ChatWide() {
             </nav>
           </aside>
 
-          <div className="flex h-[70vh] flex-1 flex-col">
-            <div ref={listRef} className="flex-1 overflow-y-auto pr-1">
+          <div className="flex h-[75vh] flex-1 flex-col">
+            <div ref={listRef} className="flex-1 overflow-y-auto pr-1 scrollbar-themed">
               <div className="flex flex-col gap-2">
                 {messages.map((message) => (
                   <MessageBubble
@@ -417,6 +494,9 @@ export default function ChatWide() {
                     content={message.content}
                     isAuth={isAuth}
                     onRiskAnswer={handleRiskAnswer}
+                    portfolioExplanation={portfolioExplanation}
+                    portfolioExplanationError={portfolioExplanationError}
+                    portfolioExplanationLoading={portfolioExplanationLoading}
                   />
                 ))}
                 {typing ? (
@@ -433,17 +513,46 @@ export default function ChatWide() {
               </div>
             ) : null}
 
-            <div className="mt-3 flex items-end gap-2">
-              <textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                rows={2}
-                className="flex-1 resize-none rounded-xl border border-border bg-white/5 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Опишите вашу инвестиционную цель..."
-              />
-              <button className="btn" onClick={handleSend} disabled={!draft.trim()}>
-                Отправить
-              </button>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="relative flex-1">
+                <textarea
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    const isComposing = (event.nativeEvent as { isComposing?: boolean }).isComposing;
+                    if (event.key === "Enter" && !event.shiftKey && !isComposing) {
+                      event.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  rows={2}
+                  className="flex-1 w-full resize-none rounded-xl border border-border bg-white/5 px-3 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  placeholder="Опишите вашу инвестиционную цель..."
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 transform items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={handleSend}
+                  disabled={!draft.trim()}
+                  aria-label="send message"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4"
+                  >
+                    <path d="M3 3l18 9-18 9 4-9-4-9z" />
+                    <path d="M11 12L3 3" />
+                    <path d="M11 12l-4 9" />
+                  </svg>
+                </button>
+              </div>
+
               <button
                 className={classNames(
                   "btn-secondary",
@@ -467,12 +576,20 @@ function MessageBubble({
   content,
   isAuth,
   onRiskAnswer,
+  onRequestPortfolioExplanation,
+  portfolioExplanation,
+  portfolioExplanationError,
+  portfolioExplanationLoading,
 }: {
   sender: MessageSender;
   type: string;
   content: unknown;
   isAuth: boolean;
   onRiskAnswer?: (payload: RiskResponsePayload) => void;
+  onRequestPortfolioExplanation?: () => void;
+  portfolioExplanation?: string | null;
+  portfolioExplanationError?: string | null;
+  portfolioExplanationLoading?: boolean;
 }) {
   const isUser = sender === "user";
   let body: React.ReactNode;
@@ -487,7 +604,16 @@ function MessageBubble({
   } else if (type === "risk_result" && !isUser) {
     body = <RiskResultMessage result={content as RiskProfileResult} />;
   } else if (type === "portfolio_recommendation" && !isUser) {
-    body = <PortfolioMessage portfolio={content} isAuth={isAuth} />;
+    body = (
+      <PortfolioMessage
+        portfolio={content as PortfolioRecommendation | null}
+        isAuth={isAuth}
+        onRequestExplanation={onRequestPortfolioExplanation}
+        explanation={portfolioExplanation}
+        explanationError={portfolioExplanationError}
+        explanationLoading={portfolioExplanationLoading}
+      />
+    );
   } else if (type === "audio") {
     const audio = content as { data?: string; mime?: string };
     const src = audio?.data
@@ -606,99 +732,231 @@ function RiskFormMessage({
 }
 
 function RiskResultMessage({ result }: { result: RiskProfileResult }) {
-  const { profile, conservative_score, moderate_score, aggressive_score, investment_horizon } =
-    result;
+  const {
+    profile,
+    conservative_score,
+    moderate_score,
+    aggressive_score,
+    investment_horizon,
+  } = result;
+
+  const profileLabelMap: Record<string, string> = {
+    conservative: "Консервативный",
+    "консервативный": "Консервативный",
+    moderate: "Умеренный",
+    "умеренный": "Умеренный",
+    aggressive: "Агрессивный",
+    "агрессивный": "Агрессивный",
+  };
+
+  const normalizedProfile = (() => {
+    const value = profile?.trim() ?? "";
+    const key = value.toLowerCase();
+    return profileLabelMap[key] ??(value || "—");
+  })();
+
+  const horizonLabel = investment_horizon?.trim() || "—";
+
+  const rows = [
+    { label: "Консервативный", value: conservative_score },
+    { label: "Умеренный", value: moderate_score },
+    { label: "Агрессивный", value: aggressive_score },
+  ];
 
   return (
-    <div className="space-y-3 text-sm">
-      <div className="text-xs uppercase text-muted">Ваш риск-профиль</div>
-      <div className="flex items-center gap-2">
-        <span className="rounded-lg border border-border bg-white/10 px-2 py-1 text-sm font-semibold">
-          {profile}
+    <div className="w-full max-w-[720px] overflow-hidden rounded-xl border border-border bg-white/5 shadow-sm">
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/10 px-4 py-3">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Риск-профиль
         </span>
-        {investment_horizon ? (
-          <span className="text-xs text-muted">Горизонт: {investment_horizon}</span>
-        ) : null}
+        <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">
+          {normalizedProfile}
+        </span>
       </div>
-      <div className="grid grid-cols-3 gap-2 text-center text-xs">
-        <RiskScoreCard label="Консервативный" value={conservative_score} />
-        <RiskScoreCard label="Умеренный" value={moderate_score} />
-        <RiskScoreCard label="Агрессивный" value={aggressive_score} />
-      </div>
-      <div className="rounded-lg border border-border bg-white/5 p-3 text-xs text-muted">
-        Мы будем использовать полученный профиль, чтобы подобрать подходящий портфель
-        инструментов и уровень риска.
-      </div>
-    </div>
-  );
-}
 
-function RiskScoreCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border border-border bg-white/5 p-2">
-      <div className="text-muted">{label}</div>
-      <div className="text-base font-semibold text-text">{value}</div>
-    </div>
-  );
-}
-
-function PortfolioMessage({ portfolio, isAuth }: { portfolio: any; isAuth: boolean }) {
-  const id = portfolio?.id;
-  const detailHref = id ? `/portfolios/${id}` : "/portfolios";
-  return (
-    <div className="relative">
-      <div className="space-y-2 text-sm">
-        <div className="text-lg font-semibold">{portfolio?.name || "Инвестиционный портфель"}</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-muted">Объем</div>
-            <div className="text-base font-semibold">
-              {isAuth ? `$${Number(portfolio?.totalValue || 0).toLocaleString()}` : "•••••"}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted">Ожид. доходность</div>
-            <div className="text-base font-semibold">
-              {isAuth ? `${Number(portfolio?.expectedReturn || 0).toFixed(1)}%` : "•••%"}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted">Риск</div>
-            <div className="text-base font-semibold">
-              {isAuth ? portfolio?.riskLevel || "-" : "•••"}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted">Активов</div>
-            <div className="text-base font-semibold">
-              {isAuth ? portfolio?.assets?.length ?? 0 : "••"}
-            </div>
-          </div>
+      <div className="space-y-4 px-4 py-4 text-sm text-text">
+        <div className="text-xs text-muted">
+          Горизонт инвестирования:
+          <span className="ml-1 text-sm font-medium text-text">{horizonLabel}</span>
         </div>
+
+        <div className="overflow-hidden rounded-lg border border-white/10">
+          <table className="w-full border-collapse text-sm">
+            <thead className="bg-white/5 text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-4 py-3 text-left font-semibold">Категория</th>
+                <th className="px-4 py-3 text-right font-semibold">Баллы</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr
+                  key={row.label}
+                  className={classNames(
+                    "bg-transparent text-sm text-text",
+                    index !== 0 ? "border-t border-white/10" : undefined,
+                  )}
+                >
+                  <td className="px-4 py-3 text-muted">{row.label}</td>
+                  <td className="px-4 py-3 text-right text-base font-semibold text-text">
+                    {row.value}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="rounded-lg bg-white/5 px-4 py-3 text-xs text-muted">
+          Мы используем ваш риск-профиль, чтобы подобрать подходящий инвестиционный портфель на
+          следующем шаге.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function PortfolioMessage({
+  portfolio,
+  isAuth
+}: {
+  portfolio: PortfolioRecommendation | null;
+  isAuth: boolean;
+  onRequestExplanation?: () => void;
+  explanation?: string | null;
+  explanationError?: string | null;
+  explanationLoading?: boolean;
+}) {
+  if (!portfolio) {
+    return <div className="text-sm text-muted">Не удалось получить рекомендации по портфелю.</div>;
+  }
+
+  const formatMoney = (value: number, fractionDigits = 0) =>
+    `${(Number.isFinite(value) ? value : 0).toLocaleString("ru-RU", {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    })} руб.`;
+  const displayMoney = (value?: number | null, fractionDigits = 0) => formatMoney(value ?? 0, fractionDigits);
+  const displayPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed(1)}%`;
+  const displayQuantity = (value?: number | null) =>
+    (value ?? 0).toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+
+  const horizonYears = portfolio.investment_term_months / 12;
+  const horizonLabels: Record<string, string> = { short: "Короткий", medium: "Средний", long: "Долгий" };
+  const riskLabels: Record<string, string> = { conservative: "Консервативный", moderate: "Умеренный", aggressive: "Агрессивный" };
+  const horizonLabel = horizonLabels[portfolio.time_horizon] ?? portfolio.time_horizon;
+  const riskLabel = riskLabels[portfolio.risk_profile] ?? portfolio.risk_profile;
+  const composition = Array.isArray(portfolio.composition) ? portfolio.composition : [];
+
+  return (
+    <div className="w-full max-w-[720px] overflow-hidden rounded-xl border border-border bg-white/5 text-text shadow-sm">
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/10 px-4 py-3">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">Инвестиционный портфель</span>
+        <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">{riskLabel}</span>
+      </div>
+
+      <div className="space-y-4 px-4 py-4 text-sm">
+        <div>
+          <div className="text-xs uppercase text-muted">SMART-цель</div>
+          <div className="mt-1 font-semibold">{portfolio.smart_goal}</div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <SummaryItem label="Целевая сумма" value={displayMoney(portfolio.target_amount)} />
+          <SummaryItem label="Стартовый капитал" value={displayMoney(portfolio.initial_capital)} />
+          <SummaryItem label="Горизонт инвестирования" value={`${horizonYears.toFixed(1)} года`} />
+          <SummaryItem
+            label="Ежемесячный взнос"
+            value={displayMoney(portfolio.monthly_payment_detail?.monthly_payment)}
+          />
+          <SummaryItem label="Ожидаемая доходность" value={displayPercent(portfolio.expected_portfolio_return)} />
+          <SummaryItem label="Инфляция в расчёте" value={displayPercent(portfolio.annual_inflation_rate)} />
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <SummaryItem label="Риск-профиль" value={riskLabel} />
+          <SummaryItem label="Инвестиционный горизонт" value={`${horizonLabel} · ${horizonYears.toFixed(1)} года`} />
+        </div>
+
+        {composition.length ? (
+          <div className="space-y-3">
+            <div className="text-xs uppercase text-muted">Структура портфеля</div>
+            {composition.map((block) => {
+              const assets = Array.isArray(block.assets) ? block.assets : [];
+              return (
+                <div key={block.asset_type} className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs text-muted">Класс активов</div>
+                      <div className="text-sm font-semibold text-text">{block.asset_type}</div>
+                    </div>
+                    <div className="text-xs text-muted">
+                      <div>Доля: {displayPercent(block.target_weight)}</div>
+                      <div>Стоимость: {displayMoney(block.amount)}</div>
+                    </div>
+                  </div>
+
+                  {assets.length ? (
+                    <div className="overflow-hidden rounded-md border border-white/10">
+                      <table className="w-full text-xs md:text-sm">
+                        <thead className="bg-white/5 text-xs uppercase tracking-wide text-muted">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold">Название</th>
+                            <th className="px-3 py-2 text-left font-semibold">Тикер</th>
+                            <th className="px-3 py-2 text-right font-semibold">Кол-во</th>
+                            <th className="px-3 py-2 text-right font-semibold">Цена</th>
+                            <th className="px-3 py-2 text-right font-semibold">Стоимость</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {assets.map((asset, idx) => (
+                            <tr
+                              key={`${asset.ticker || asset.name}-${idx}`}
+                              className={classNames(
+                                "bg-transparent text-text",
+                                idx !== 0 ? "border-t border-white/10" : undefined,
+                              )}
+                            >
+                              <td className="px-3 py-2">{asset.name || "—"}</td>
+                              <td className="px-3 py-2 text-muted">{asset.ticker || "—"}</td>
+                              <td className="px-3 py-2 text-right">{displayQuantity(asset.quantity)}</td>
+                              <td className="px-3 py-2 text-right">{displayMoney(asset.price, 2)}</td>
+                              <td className="px-3 py-2 text-right">{displayMoney(asset.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted">Нет данных по активам.</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
         {isAuth ? (
-          <div className="pt-2">
-            <Link to={detailHref} className="btn">
-              Посмотреть детали
-            </Link>
-          </div>
-        ) : null}
-      </div>
-
-      {!isAuth && (
-        <div className="absolute inset-0 grid place-items-center rounded-xl bg-black/30 backdrop-blur-sm">
-          <div className="text-center text-xs text-text">
-            <div className="mb-2">Авторизуйтесь, чтобы увидеть детали портфеля.</div>
-            <div className="flex items-center justify-center gap-2">
-              <Link to="/auth" className="btn">
-                Войти
-              </Link>
-              <Link to="/auth?mode=register" className="tab">
-                Зарегистрироваться
+          <div className="rounded-lg bg-white/5 px-4 py-3 text-xs text-muted">
+            Вы можете сохранить рекомендацию во вкладке «Портфели», чтобы отслеживать прогресс.
+            <div className="pt-2">
+              <Link to="/portfolios" className="btn-secondary">
+                Открыть мои портфели
               </Link>
             </div>
           </div>
-        </div>
-      )}
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/10 p-3">
+      <div className="text-xs text-muted">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-text">{value}</div>
     </div>
   );
 }
