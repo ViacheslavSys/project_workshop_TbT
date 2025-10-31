@@ -74,10 +74,6 @@ export default function ChatWide() {
   const [portfolioExplanation, setPortfolioExplanation] = useState<string | null>(null);
   const [portfolioExplanationError, setPortfolioExplanationError] = useState<string | null>(null);
   const [portfolioExplanationLoading, setPortfolioExplanationLoading] = useState(false);
-  // В разделе с другими useState, добавьте:
-  const [portfolioAnalysis, setPortfolioAnalysis] = useState<string | null>(null);
-  const [portfolioAnalysisLoading, setPortfolioAnalysisLoading] = useState(false);
-  const [portfolioAnalysisError, setPortfolioAnalysisError] = useState<string | null>(null);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const userIdRef = useRef<string>("");
@@ -556,9 +552,7 @@ export default function ChatWide() {
                   portfolioExplanation={portfolioExplanation}
                   portfolioExplanationError={portfolioExplanationError}
                   portfolioExplanationLoading={portfolioExplanationLoading}
-                  portfolioAnalysis={portfolioAnalysis}
-                  portfolioAnalysisError={portfolioAnalysisError}
-                  portfolioAnalysisLoading={portfolioAnalysisLoading}
+                  
                 />
                 ))}
                 {typing ? (
@@ -640,10 +634,7 @@ function MessageBubble({
   onRiskAnswer,
   portfolioExplanation,
   portfolioExplanationError,
-  portfolioExplanationLoading,
-  portfolioAnalysis,
-  portfolioAnalysisError,
-  portfolioAnalysisLoading,
+  portfolioExplanationLoading,  
 }: {
   sender: MessageSender;
   type: string;
@@ -653,9 +644,7 @@ function MessageBubble({
   portfolioExplanation?: string | null;
   portfolioExplanationError?: string | null;
   portfolioExplanationLoading?: boolean;
-  portfolioAnalysis?: string | null;
-  portfolioAnalysisError?: string | null;
-  portfolioAnalysisLoading?: boolean;
+
 }) {
   const isUser = sender === "user";
   let body: React.ReactNode;
