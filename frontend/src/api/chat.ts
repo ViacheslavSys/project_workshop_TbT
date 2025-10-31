@@ -227,6 +227,10 @@ export type PortfolioCalculationResponse = {
   recommendation?: PortfolioRecommendation | null;
 };
 
+export type PortfolioAnalysisResponse = {
+  analysis: string;
+};
+
 export async function calculatePortfolio(userId: string) {
   const res = await fetch(buildUrl("/portfolios/calculate"), {
     method: "POST",
@@ -236,6 +240,18 @@ export async function calculatePortfolio(userId: string) {
     body: JSON.stringify({ user_id: userId }),
   });
   return handleResponse<PortfolioCalculationResponse>(res);
+}
+
+export async function fetchPortfolioAnalysis(userId: string) {
+  const res = await fetch(buildUrl("/portfolios/analyze"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  const data = await handleResponse<PortfolioAnalysisResponse>(res);
+  return data.analysis;
 }
 
 let cachedAnonId: string | null = null;

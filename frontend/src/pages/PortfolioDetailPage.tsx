@@ -1,9 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
+import { useSelector } from "react-redux";
 import { samplePortfolios } from "../data/samplePortfolios";
 import PortfolioAssetsTable, { type PortfolioAssetRow } from "../components/PortfolioAssetsTable";
 import InfoTip from "../components/InfoTip";
 import MLReport from "../components/MLReport";
+import { fetchPortfolioAnalysis, getAnonymousUserId } from "../api/chat";
+import type { RootState } from "../store/store";
 
 function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
 function colorFor(v: number, min: number, max: number, invert = false) {
@@ -121,6 +124,26 @@ function Bars({ items, label }: { items: { label: string; value: number }[]; lab
 export default function PortfolioDetailPage() {
   const { id } = useParams();
   const portfolio = useMemo(() => samplePortfolios.find(p => p.id === id) || samplePortfolios[0], [id]);
+  const authUserId = useSelector((state: RootState) => state.auth.user?.id);
+  const userId = authUserId ?? getAnonymousUserId();
+
+  const [analysis, setAnalysis] = useState<string | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  const handleFetchAnalysis = useCallback(async () => {
+    setAnalysisError(null);
+    setAnalysisLoading(true);
+    try {
+      const result = await fetchPortfolioAnalysis(userId);
+      setAnalysis(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось получить объяснение расчётов";
+      setAnalysisError(message);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [userId]);
 
   const tableRows: PortfolioAssetRow[] = useMemo(() => (
     portfolio.assets.map(a => ({
@@ -136,17 +159,6 @@ export default function PortfolioDetailPage() {
       cycleFactor: a.cycleFactor,
     }))
   ), [portfolio]);
-
-  const reportExplanation = useMemo(() => (
-    [
-      "Модель оптимизирует портфель по соотношению риск/доходность с учётом ограничений по долям и профилю риска.",
-      "- Ожидаемая доходность — средневзвешенная по активам;",
-      "- Риск — оценка на основе волатильности;",
-      "- Sharpe — эффективность доходности на единицу риска;",
-      "- Дивиденды/YTM — поток выплат (для облигаций — доходность к погашению)."
-    ].join("\n\n")
-  ), []);
-
   const reportFormulas = useMemo(() => ([
     {
       title: "Ожидаемая доходность портфеля",
@@ -172,6 +184,9 @@ export default function PortfolioDetailPage() {
       ]
     }
   ]), []);
+
+  const shouldShowReport = analysisLoading || analysis !== null;
+  const explanationText = analysisLoading ? "Идёт загрузка отчёта о расчётах..." : (analysis ?? "");
 
   return (
     <div className="grid gap-6">
@@ -232,9 +247,27 @@ export default function PortfolioDetailPage() {
         </div>
       </div>
 
-            <MLReport explanation={reportExplanation} formulas={reportFormulas} />
+      <div className="flex flex-col gap-2 items-start">
+        <button
+          type="button"
+          className={`btn ${analysisLoading ? "opacity-70 cursor-not-allowed" : ""}`}
+          onClick={handleFetchAnalysis}
+          disabled={analysisLoading}
+        >
+          {analysisLoading ? "Считаем..." : "Как посчитано"}
+        </button>
+        {analysisError ? (
+          <div className="text-sm text-danger">
+            Не удалось загрузить объяснение расчётов: {analysisError}
+          </div>
+        ) : null}
+      </div>
 
-<PortfolioAssetsTable rows={tableRows} title="Активы и метрики" />
+      {shouldShowReport ? (
+        <MLReport explanation={explanationText} formulas={reportFormulas} />
+      ) : null}
+
+      <PortfolioAssetsTable rows={tableRows} title="Активы и метрики" />
     </div>
   );
 }

@@ -1,10 +1,13 @@
 ﻿import React, { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   calculatePortfolio,
   clarifyRiskProfile,
   fetchRiskQuestions,
+  fetchPortfolioAnalysis,
   getAnonymousUserId,
   sendChatAudio,
   sendChatText,
@@ -62,12 +65,15 @@ export default function ChatWide() {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [, setPending] = useState(false);
   const [riskQuestions, setRiskQuestions] = useState<RiskQuestion[]>([]);
   const [riskAnswers, setRiskAnswers] = useState<Record<number, string>>({});
   const [currentRiskIndex, setCurrentRiskIndex] = useState<number>(-1);
   const [clarifyingQuestions, setClarifyingQuestions] = useState<RiskClarifyingQuestion[]>([]);
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
+  const [portfolioExplanation, setPortfolioExplanation] = useState<string | null>(null);
+  const [portfolioExplanationError, setPortfolioExplanationError] = useState<string | null>(null);
+  const [portfolioExplanationLoading, setPortfolioExplanationLoading] = useState(false);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const userIdRef = useRef<string>("");
@@ -116,6 +122,10 @@ export default function ChatWide() {
     if (!text) return;
     const userId = userIdRef.current || getAnonymousUserId();
     userIdRef.current = userId;
+
+    setPortfolioExplanation(null);
+    setPortfolioExplanationError(null);
+    setPortfolioExplanationLoading(false);
 
     appendMessage("user", "message", text);
     setDraft("");
@@ -258,6 +268,9 @@ export default function ChatWide() {
     userIdRef.current = userId;
     setError(null);
     setPending(true);
+    setPortfolioExplanation(null);
+    setPortfolioExplanationError(null);
+    setPortfolioExplanationLoading(false);
     dispatch(setStage("risk"));
     appendMessage("ai", "message", "Запускаю тестирование на риск-профиль.");
     try {
@@ -281,6 +294,24 @@ export default function ChatWide() {
     } finally {
       setPending(false);
     }
+  const handleRequestPortfolioExplanation = useCallback(async () => {
+    if (portfolioExplanationLoading) return;
+    const userId = userIdRef.current || getAnonymousUserId();
+    userIdRef.current = userId;
+
+    setPortfolioExplanationError(null);
+    setPortfolioExplanationLoading(true);
+    try {
+      const explanation = await fetchPortfolioAnalysis(userId);
+      setPortfolioExplanation(explanation);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось получить объяснение расчётов";
+      setPortfolioExplanationError(message);
+    } finally {
+      setPortfolioExplanationLoading(false);
+    }
+  }, [fetchPortfolioAnalysis, getAnonymousUserId, portfolioExplanationLoading]);
+
   }, [appendMessage, dispatch, enqueueRiskQuestion]);
 
   useEffect(() => {
@@ -483,6 +514,10 @@ export default function ChatWide() {
                     content={message.content}
                     isAuth={isAuth}
                     onRiskAnswer={handleRiskAnswer}
+                    onRequestPortfolioExplanation={handleRequestPortfolioExplanation}
+                    portfolioExplanation={portfolioExplanation}
+                    portfolioExplanationError={portfolioExplanationError}
+                    portfolioExplanationLoading={portfolioExplanationLoading}
                   />
                 ))}
                 {typing ? (
@@ -505,11 +540,8 @@ export default function ChatWide() {
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={(event) => {
-                    if (
-                      event.key === "Enter" &&
-                      !event.shiftKey &&
-                      !event.isComposing
-                    ) {
+                    const isComposing = (event.nativeEvent as { isComposing?: boolean }).isComposing;
+                    if (event.key === "Enter" && !event.shiftKey && !isComposing) {
                       event.preventDefault();
                       void handleSend();
                     }
@@ -565,12 +597,20 @@ function MessageBubble({
   content,
   isAuth,
   onRiskAnswer,
+  onRequestPortfolioExplanation,
+  portfolioExplanation,
+  portfolioExplanationError,
+  portfolioExplanationLoading,
 }: {
   sender: MessageSender;
   type: string;
   content: unknown;
   isAuth: boolean;
   onRiskAnswer?: (payload: RiskResponsePayload) => void;
+  onRequestPortfolioExplanation?: () => void;
+  portfolioExplanation?: string | null;
+  portfolioExplanationError?: string | null;
+  portfolioExplanationLoading?: boolean;
 }) {
   const isUser = sender === "user";
   let body: React.ReactNode;
@@ -585,7 +625,16 @@ function MessageBubble({
   } else if (type === "risk_result" && !isUser) {
     body = <RiskResultMessage result={content as RiskProfileResult} />;
   } else if (type === "portfolio_recommendation" && !isUser) {
-    body = <PortfolioMessage portfolio={content as PortfolioRecommendation | null} isAuth={isAuth} />;
+    body = (
+      <PortfolioMessage
+        portfolio={content as PortfolioRecommendation | null}
+        isAuth={isAuth}
+        onRequestExplanation={onRequestPortfolioExplanation}
+        explanation={portfolioExplanation}
+        explanationError={portfolioExplanationError}
+        explanationLoading={portfolioExplanationLoading}
+      />
+    );
   } else if (type === "audio") {
     const audio = content as { data?: string; mime?: string };
     const src = audio?.data
@@ -789,7 +838,21 @@ function RiskResultMessage({ result }: { result: RiskProfileResult }) {
 }
 
 
-function PortfolioMessage({ portfolio, isAuth }: { portfolio: PortfolioRecommendation | null; isAuth: boolean }) {
+function PortfolioMessage({
+  portfolio,
+  isAuth,
+  onRequestExplanation,
+  explanation,
+  explanationError,
+  explanationLoading,
+}: {
+  portfolio: PortfolioRecommendation | null;
+  isAuth: boolean;
+  onRequestExplanation?: () => void;
+  explanation?: string | null;
+  explanationError?: string | null;
+  explanationLoading?: boolean;
+}) {
   if (!portfolio) {
     return <div className="text-sm text-muted">Не удалось получить рекомендации по портфелю.</div>;
   }
