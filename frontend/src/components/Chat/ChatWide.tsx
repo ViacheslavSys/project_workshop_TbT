@@ -676,10 +676,7 @@ function MessageBubble({
         isAuth={isAuth}
         explanation={portfolioExplanation}
         explanationError={portfolioExplanationError}
-        explanationLoading={portfolioExplanationLoading}
-        analysis={portfolioAnalysis}
-        analysisError={portfolioAnalysisError}
-        analysisLoading={portfolioAnalysisLoading}
+        explanationLoading={portfolioExplanationLoading}        
       />
     );
   } else if (type === "portfolio_analysis" && !isUser) { // ДОБАВЬТЕ ЭТОТ БЛОК
