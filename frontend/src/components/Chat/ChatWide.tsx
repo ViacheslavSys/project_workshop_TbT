@@ -794,9 +794,15 @@ function PortfolioMessage({ portfolio, isAuth }: { portfolio: PortfolioRecommend
     return <div className="text-sm text-muted">Не удалось получить рекомендации по портфелю.</div>;
   }
 
-  const formatMoney = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} руб.`;
-  const displayMoney = (value?: number | null) => formatMoney(value ?? 0);
+  const formatMoney = (value: number, fractionDigits = 0) =>
+    `${(Number.isFinite(value) ? value : 0).toLocaleString("ru-RU", {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    })} руб.`;
+  const displayMoney = (value?: number | null, fractionDigits = 0) => formatMoney(value ?? 0, fractionDigits);
   const displayPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed(1)}%`;
+  const displayQuantity = (value?: number | null) =>
+    (value ?? 0).toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 
   const horizonYears = portfolio.investment_term_months / 12;
   const horizonLabels: Record<string, string> = { short: "Короткий", medium: "Средний", long: "Долгий" };
@@ -806,76 +812,111 @@ function PortfolioMessage({ portfolio, isAuth }: { portfolio: PortfolioRecommend
   const composition = Array.isArray(portfolio.composition) ? portfolio.composition : [];
 
   return (
-    <div className="relative space-y-4 text-sm">
-      <div>
-        <div className="text-xs uppercase text-muted">SMART-цель</div>
-        <div className="mt-1 font-semibold text-text">{portfolio.smart_goal}</div>
+    <div className="w-full max-w-[720px] overflow-hidden rounded-xl border border-border bg-white/5 text-text shadow-sm">
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/10 px-4 py-3">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">Инвестиционный портфель</span>
+        <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">{riskLabel}</span>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <SummaryItem label="Целевая сумма" value={displayMoney(portfolio.target_amount)} />
-        <SummaryItem label="Стартовый капитал" value={displayMoney(portfolio.initial_capital)} />
-        <SummaryItem label="Горизонт инвестирования" value={`${horizonYears.toFixed(1)} года`} />
-        <SummaryItem label="Ежемесячный взнос" value={displayMoney(portfolio.monthly_payment_detail?.monthly_payment)} />
-        <SummaryItem label="Ожидаемая доходность" value={displayPercent(portfolio.expected_portfolio_return)} />
-        <SummaryItem label="Инфляция в расчёте" value={displayPercent(portfolio.annual_inflation_rate)} />
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-lg border border-border bg-white/5 p-3">
-          <div className="text-xs text-muted">Риск-профиль</div>
-          <div className="mt-1 font-semibold text-text">{riskLabel}</div>
+      <div className="space-y-4 px-4 py-4 text-sm">
+        <div>
+          <div className="text-xs uppercase text-muted">SMART-цель</div>
+          <div className="mt-1 font-semibold">{portfolio.smart_goal}</div>
         </div>
-        <div className="rounded-lg border border-border bg-white/5 p-3">
-          <div className="text-xs text-muted">Инвестиционный горизонт</div>
-          <div className="mt-1 font-semibold text-text">
-            {horizonLabel} · {horizonYears.toFixed(1)} года
-          </div>
-        </div>
-      </div>
 
-      {composition.length ? (
-        <div className="space-y-2">
-          <div className="text-xs uppercase text-muted">Структура портфеля</div>
-          <div className="space-y-2">
-            {composition.map((block) => (
-              <div key={block.asset_type} className="rounded-lg border border-border bg-white/5 p-3">
-                <div className="flex items-center justify-between text-sm font-semibold text-text">
-                  <span>{block.asset_type}</span>
-                  <span>{`${((block.target_weight ?? 0) * 100).toFixed(0)}%`}</span>
-                </div>
-                {block.assets?.length ? (
-                  <div className="mt-2 grid gap-1 text-xs text-muted">
-                    {block.assets.slice(0, 3).map((asset, idx) => (
-                      <div key={`${asset.ticker || asset.name}-${idx}`} className="flex items-center justify-between">
-                        <span>{asset.ticker || asset.name}</span>
-                        <span>{`${((asset.weight ?? 0) * 100).toFixed(1)}%`}</span>
-                      </div>
-                    ))}
+        <div className="grid gap-3 md:grid-cols-3">
+          <SummaryItem label="Целевая сумма" value={displayMoney(portfolio.target_amount)} />
+          <SummaryItem label="Стартовый капитал" value={displayMoney(portfolio.initial_capital)} />
+          <SummaryItem label="Горизонт инвестирования" value={`${horizonYears.toFixed(1)} года`} />
+          <SummaryItem
+            label="Ежемесячный взнос"
+            value={displayMoney(portfolio.monthly_payment_detail?.monthly_payment)}
+          />
+          <SummaryItem label="Ожидаемая доходность" value={displayPercent(portfolio.expected_portfolio_return)} />
+          <SummaryItem label="Инфляция в расчёте" value={displayPercent(portfolio.annual_inflation_rate)} />
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <SummaryItem label="Риск-профиль" value={riskLabel} />
+          <SummaryItem label="Инвестиционный горизонт" value={`${horizonLabel} · ${horizonYears.toFixed(1)} года`} />
+        </div>
+
+        {composition.length ? (
+          <div className="space-y-3">
+            <div className="text-xs uppercase text-muted">Структура портфеля</div>
+            {composition.map((block) => {
+              const assets = Array.isArray(block.assets) ? block.assets : [];
+              return (
+                <div key={block.asset_type} className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs text-muted">Класс активов</div>
+                      <div className="text-sm font-semibold text-text">{block.asset_type}</div>
+                    </div>
+                    <div className="text-xs text-muted">
+                      <div>Доля: {displayPercent(block.target_weight)}</div>
+                      <div>Стоимость: {displayMoney(block.amount)}</div>
+                    </div>
                   </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
 
-      {isAuth ? (
-        <div className="text-xs text-muted">
-          Вы можете сохранить рекомендацию во вкладке «Портфели», чтобы отслеживать прогресс.
-          <div className="pt-2">
-            <Link to="/portfolios" className="btn-secondary">Открыть мои портфели</Link>
+                  {assets.length ? (
+                    <div className="overflow-hidden rounded-md border border-white/10">
+                      <table className="w-full text-xs md:text-sm">
+                        <thead className="bg-white/5 text-xs uppercase tracking-wide text-muted">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold">Название</th>
+                            <th className="px-3 py-2 text-left font-semibold">Тикер</th>
+                            <th className="px-3 py-2 text-right font-semibold">Кол-во</th>
+                            <th className="px-3 py-2 text-right font-semibold">Цена</th>
+                            <th className="px-3 py-2 text-right font-semibold">Стоимость</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {assets.map((asset, idx) => (
+                            <tr
+                              key={`${asset.ticker || asset.name}-${idx}`}
+                              className={classNames(
+                                "bg-transparent text-text",
+                                idx !== 0 ? "border-t border-white/10" : undefined,
+                              )}
+                            >
+                              <td className="px-3 py-2">{asset.name || "—"}</td>
+                              <td className="px-3 py-2 text-muted">{asset.ticker || "—"}</td>
+                              <td className="px-3 py-2 text-right">{displayQuantity(asset.quantity)}</td>
+                              <td className="px-3 py-2 text-right">{displayMoney(asset.price, 2)}</td>
+                              <td className="px-3 py-2 text-right">{displayMoney(asset.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted">Нет данных по активам.</div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
+        {isAuth ? (
+          <div className="rounded-lg bg-white/5 px-4 py-3 text-xs text-muted">
+            Вы можете сохранить рекомендацию во вкладке «Портфели», чтобы отслеживать прогресс.
+            <div className="pt-2">
+              <Link to="/portfolios" className="btn-secondary">
+                Открыть мои портфели
+              </Link>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
 function SummaryItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border bg-white/5 p-3">
+    <div className="rounded-lg border border-white/10 bg-white/10 p-3">
       <div className="text-xs text-muted">{label}</div>
       <div className="mt-1 text-sm font-semibold text-text">{value}</div>
     </div>
