@@ -1,2 +1,5 @@
-import ChatWide from "../components/Chat/ChatWide";
-export default function ChatPage(){ return <ChatWide/> }
+import ChatView from "../features/chat/components/ChatView";
+
+export default function ChatPage() {
+  return <ChatView />;
+}

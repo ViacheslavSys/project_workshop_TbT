@@ -1,11 +1,10 @@
-import { useSelector, useDispatch } from "react-redux";
-import { type RootState } from "../store/store";
-import { logout, login } from "../store/authSlice";
+import { useAppDispatch, useAppSelector } from "../app/store/hooks";
+import { logout, login } from "../features/auth/store/authSlice";
 import { Link, useNavigate } from "react-router-dom";
 
 export default function AccountPage(){
-  const { user, isAuthenticated } = useSelector((s:RootState)=> s.auth);
-  const dispatch = useDispatch();
+  const { user, isAuthenticated } = useAppSelector((state) => state.auth);
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
 
   const loginDemo = () => {

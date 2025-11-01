@@ -1,12 +1,12 @@
 import { useMemo, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useAppSelector } from "../app/store/hooks";
 import { samplePortfolios } from "../data/samplePortfolios";
 import PortfolioAssetsTable, { type PortfolioAssetRow } from "../components/PortfolioAssetsTable";
 import InfoTip from "../components/InfoTip";
 import MLReport from "../components/MLReport";
-import { fetchPortfolioAnalysis, getAnonymousUserId } from "../api/chat";
-import type { RootState } from "../store/store";
+import { fetchPortfolioAnalysis } from "../features/portfolio/api/portfolioApi";
+import { getAnonymousUserId } from "../shared/utils/anonymousUser";
 
 function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
 function colorFor(v: number, min: number, max: number, invert = false) {
@@ -124,7 +124,7 @@ function Bars({ items, label }: { items: { label: string; value: number }[]; lab
 export default function PortfolioDetailPage() {
   const { id } = useParams();
   const portfolio = useMemo(() => samplePortfolios.find(p => p.id === id) || samplePortfolios[0], [id]);
-  const authUserId = useSelector((state: RootState) => state.auth.user?.id);
+  const authUserId = useAppSelector((state) => state.auth.user?.id);
   const userId = authUserId ?? getAnonymousUserId();
 
   const [analysis, setAnalysis] = useState<string | null>(null);

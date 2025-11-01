@@ -1,11 +1,10 @@
 import { NavLink } from "react-router-dom";
-import { useSelector } from "react-redux";
-import type { RootState } from "../../store/store";
+import { useAppSelector } from "../../app/store/hooks";
 
 type Props = { onNavigate?: () => void };
 
 export default function Sidebar({ onNavigate }: Props) {
-  const { isAuthenticated, user } = useSelector((state: RootState) => state.auth);
+  const { isAuthenticated, user } = useAppSelector((state) => state.auth);
 
   const items = [
     { to: "/chat", label: "ИИ-помощник", show: true },

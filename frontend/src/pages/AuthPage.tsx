@@ -1,8 +1,8 @@
 ﻿import { useState } from "react";
-import { useDispatch } from "react-redux";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { login } from "../store/authSlice";
 import { z } from "zod";
+import { login } from "../features/auth/store/authSlice";
+import { useAppDispatch } from "../app/store/hooks";
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(6) });
 
@@ -12,7 +12,7 @@ export default function AuthPage() {
   const [mode, setMode] = useState<"login"|"register">(params.get("mode") === "register" ? "register" : "login");
   const [form, setForm] = useState({ name:"", email:"", password:"" });
   const [error, setError] = useState<string|undefined>();
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
 
   const submit = () => {
     setError(undefined);

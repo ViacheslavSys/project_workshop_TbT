@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
-import { useDispatch } from "react-redux";
-import { pushMessage, setTyping, setStage } from "../store/chatSlice";
+import { pushMessage, setTyping, setStage } from "../features/chat/store/chatSlice";
+import { useAppDispatch } from "../app/store/hooks";
+import type { ChatMessageType } from "../features/chat/messageTypes";
 
 export const useWebSocket = (url: string) => {
   const ws = useRef<WebSocket | null>(null);
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
 
   useEffect(() => {
     ws.current = new WebSocket(url);
@@ -35,7 +36,11 @@ export const useWebSocket = (url: string) => {
     return () => ws.current?.close();
   }, [url, dispatch]);
 
-  const sendMessage = (content: unknown, type = "message", opts?: { echo?: boolean }) => {
+  const sendMessage = (
+    content: unknown,
+    type: ChatMessageType = "message",
+    opts?: { echo?: boolean },
+  ) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type, content, timestamp: Date.now() }));
       if (opts?.echo !== false) {
