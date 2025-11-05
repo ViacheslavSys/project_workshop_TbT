@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { samplePortfolios } from "../data/samplePortfolios";
@@ -145,6 +145,10 @@ export default function PortfolioDetailPage() {
     }
   }, [userId]);
 
+  useEffect(() => {
+    void handleFetchAnalysis();
+  }, [handleFetchAnalysis]);
+
   const tableRows: PortfolioAssetRow[] = useMemo(() => (
     portfolio.assets.map(a => ({
       ticker: a.ticker,
@@ -271,3 +275,4 @@ export default function PortfolioDetailPage() {
     </div>
   );
 }
+
