@@ -31,6 +31,8 @@ type RiskQuestionMessagePayload = {
   options: Array<{ id: string; label: string; value: string }>;
   clarificationCode?: string;
   allowMultiple?: boolean;
+  questionNumber?: number;
+  questionTotal?: number;
 };
 
 type RiskResponsePayload =
@@ -265,9 +267,13 @@ export default function ChatWide() {
 
   const mapRiskQuestionToPayload = (
     question: RiskQuestion,
+    questionNumber?: number,
+    questionTotal?: number,
   ): RiskQuestionMessagePayload => ({
     id: question.id,
     text: question.text,
+    questionNumber,
+    questionTotal,
     options: question.options.map((option, idx) => {
       const match = option.match(/^\s*([A-Za-zА-Яа-я])\)/);
       const value = match ? match[1].toUpperCase() : String.fromCharCode(65 + idx);
@@ -280,6 +286,29 @@ export default function ChatWide() {
     }),
     allowMultiple: false,
   });
+
+  const getQuestionProgress = (
+    questions: RiskQuestion[],
+    index: number,
+  ): { number?: number; total?: number } => {
+    if (index < 0 || index >= questions.length) {
+      return { number: undefined, total: undefined };
+    }
+    let total = 0;
+    let number: number | undefined;
+    for (let idx = 0; idx < questions.length; idx += 1) {
+      if (questions[idx]?.hidden) continue;
+      total += 1;
+      if (idx === index) {
+        number = total;
+      }
+    }
+    const target = questions[index];
+    if (!target || target.hidden) {
+      return { number: undefined, total };
+    }
+    return { number, total };
+  };
 
   const mapClarifyingQuestion = (
     question: RiskClarifyingQuestion,
@@ -330,7 +359,14 @@ export default function ChatWide() {
       setCurrentRiskIndex(0);
       setClarifyingQuestions([]);
       setClarificationAnswers({});
-      enqueueRiskQuestion(mapRiskQuestionToPayload(questions[0]));
+      const initialProgress = getQuestionProgress(questions, 0);
+      enqueueRiskQuestion(
+        mapRiskQuestionToPayload(
+          questions[0],
+          initialProgress.number,
+          initialProgress.total,
+        ),
+      );
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Не удалось загрузить вопросы теста";
@@ -475,12 +511,6 @@ export default function ChatWide() {
   const handleRiskAnswer = async (payload: RiskResponsePayload) => {
     if (!payload.answers.length) return;
 
-    appendMessage(
-      "user",
-      "message",
-      `Мой выбор: ${payload.text || payload.answers.join(", ")}`,
-    );
-
     if (payload.kind === "clarification") {
       const updated = { ...clarificationAnswers, [payload.code]: payload.answers[0] };
       setClarificationAnswers(updated);
@@ -497,7 +527,14 @@ export default function ChatWide() {
     const nextIndex = currentRiskIndex + 1;
     if (nextIndex < riskQuestions.length) {
       setCurrentRiskIndex(nextIndex);
-      enqueueRiskQuestion(mapRiskQuestionToPayload(riskQuestions[nextIndex]));
+      const nextProgress = getQuestionProgress(riskQuestions, nextIndex);
+      enqueueRiskQuestion(
+        mapRiskQuestionToPayload(
+          riskQuestions[nextIndex],
+          nextProgress.number,
+          nextProgress.total,
+        ),
+      );
     } else {
       await finalizeRiskAnswers(updatedAnswers);
     }
@@ -516,18 +553,29 @@ export default function ChatWide() {
           <aside className="hidden w-56 rounded-2xl border border-border bg-white/5 p-3 md:block">
             <div className="mb-2 text-xs text-muted">Этапы</div>
             <nav className="space-y-1">
-              {steps.map((item) => (
-                <button
-                  key={item.id}
-                  className={classNames(
-                    "w-full rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/5",
-                    stage === item.id ? "bg-white/10 text-text" : "text-muted",
-                  )}
-                  disabled
-                >
-                  {item.label}
-                </button>
-              ))}
+              {steps.map((item, index) => {
+                const isActive = stage === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    className={classNames(
+                      "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/5",
+                      isActive ? "bg-white/10 text-text" : "text-muted",
+                    )}
+                    disabled
+                  >
+                    <span
+                      className={classNames(
+                        "text-xs font-semibold",
+                        isActive ? "text-primary" : "text-muted",
+                      )}
+                    >
+                      {index + 1}.
+                    </span>
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
             </nav>
           </aside>
 
@@ -726,20 +774,19 @@ function RiskFormMessage({
   }
 
   const allowMultiple = !!payload.allowMultiple;
-
-  const toggle = (value: string) => {
-    setSelected((prev) => {
-      if (allowMultiple) {
-        return prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value];
-      }
-      return prev.includes(value) ? [] : [value];
-    });
-  };
-
-  const handleSubmit = () => {
-    if (!selected.length || submitted) return;
+  const questionPrefix =
+    payload.questionNumber === undefined
+      ? null
+      : payload.questionTotal
+        ? `${payload.questionNumber}/${payload.questionTotal}`
+        : String(payload.questionNumber);
+  const questionTitle = questionPrefix ? `${questionPrefix}. ${payload.text}` : payload.text;
+  const submitAnswers = (answers: string[]) => {
+    if (!answers.length) {
+      return;
+    }
     const selectedLabels = payload.options
-      .filter((option) => selected.includes(option.value))
+      .filter((option) => answers.includes(option.value))
       .map((option) => option.label)
       .join(", ");
     setSubmitted(true);
@@ -747,16 +794,35 @@ function RiskFormMessage({
       onSubmit?.({
         kind: "clarification",
         code: payload.clarificationCode,
-        answers: selected,
+        answers,
         text: selectedLabels,
       });
     } else if (payload.id !== null) {
       onSubmit?.({
         kind: "question",
         questionId: payload.id,
-        answers: selected,
+        answers,
         text: selectedLabels,
       });
+    }
+  };
+
+  const toggle = (value: string) => {
+    if (submitted) {
+      return;
+    }
+    const next = allowMultiple
+      ? selected.includes(value)
+        ? selected.filter((item) => item !== value)
+        : [...selected, value]
+      : selected.includes(value)
+        ? []
+        : [value];
+
+    setSelected(next);
+
+    if (next.length) {
+      submitAnswers(next);
     }
   };
 
@@ -766,26 +832,32 @@ function RiskFormMessage({
         <div className="text-xs uppercase text-muted">
           {payload.clarificationCode ? "Уточняющий вопрос" : "Вопрос теста"}
         </div>
-        <div className="mt-1 text-sm font-medium">{payload.text}</div>
+        <div className="mt-1 text-sm font-medium">{questionTitle}</div>
       </div>
       <div className="space-y-2">
-        {payload.options.map((option) => (
-          <label key={option.id} className="flex items-center gap-2 text-sm">
-            <input
-              type={allowMultiple ? "checkbox" : "radio"}
-              className="accent-primary"
-              checked={selected.includes(option.value)}
-              onChange={() => toggle(option.value)}
-              disabled={submitted}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
-      </div>
-      <div>
-        <button className="btn" onClick={handleSubmit} disabled={!selected.length || submitted}>
-          Зафиксировать ответ
-        </button>
+        {payload.options.map((option) => {
+          const isSelected = selected.includes(option.value);
+          return (
+            <label
+              key={option.id}
+              className={classNames(
+                "flex items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+                isSelected
+                  ? "border-primary/70 bg-primary/15 text-primary"
+                  : "border-transparent bg-white/5 hover:bg-white/10",
+              )}
+            >
+              <input
+                type={allowMultiple ? "checkbox" : "radio"}
+                className="accent-primary"
+                checked={isSelected}
+                onChange={() => toggle(option.value)}
+                disabled={submitted}
+              />
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
       </div>
     </div>
   );
