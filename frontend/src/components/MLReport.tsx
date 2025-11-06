@@ -159,7 +159,8 @@ function CopyButton({ value }: { value: string }) {
 
 export default function MLReport({
   explanation,
-  formulas,  title = "Пояснение расчётов",
+  formulas,
+  title = "Пояснение расчётов",
   defaultTab = "explanation",
 }: Props) {
   const hasFormulas = Array.isArray(formulas) && formulas.length > 0;
@@ -201,7 +202,7 @@ export default function MLReport({
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-sm font-medium">
-                    {f.title || `���?�?�?�?�>�� ${idx + 1}`}
+                    {f.title || `Формула ${idx + 1}`}
                   </div>
                   <CopyButton value={f.latex || f.text || ""} />
                 </div>

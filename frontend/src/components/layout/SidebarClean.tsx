@@ -2,17 +2,20 @@ import { NavLink } from "react-router-dom";
 import { useSelector } from "react-redux";
 import type { RootState } from "../../store/store";
 
-type Props = { onNavigate?: () => void };
+type Props = {
+  onNavigate?: () => void;
+  className?: string;
+};
 
-export default function Sidebar({ onNavigate }: Props) {
+const NAV_ITEMS = [
+  { to: "/chat", label: "Чат с ассистентом", authOnly: null },
+  { to: "/portfolios", label: "Портфели", authOnly: null },
+  { to: "/account", label: "Мой профиль", authOnly: true },
+  { to: "/auth", label: "Вход / регистрация", authOnly: false },
+] as const;
+
+export default function Sidebar({ onNavigate, className }: Props) {
   const { isAuthenticated, user } = useSelector((state: RootState) => state.auth);
-
-  const items = [
-    { to: "/chat", label: "ИИ-помощник", show: true },
-    { to: "/portfolios", label: "Портфели", show: true },
-    { to: "/account", label: "Мой профиль", show: Boolean(isAuthenticated) },
-    { to: "/auth", label: "Вход / Регистрация", show: !isAuthenticated },
-  ].filter((item) => item.show);
 
   const initials = (user?.full_name || user?.username || "")
     .split(/\s+/)
@@ -22,8 +25,17 @@ export default function Sidebar({ onNavigate }: Props) {
     .slice(0, 2)
     .toUpperCase();
 
+  const items = NAV_ITEMS.filter((item) => {
+    if (item.authOnly === null) return true;
+    return item.authOnly ? isAuthenticated : !isAuthenticated;
+  });
+
+  const baseClass =
+    "flex h-full md:h-screen w-64 flex-col border-r border-border bg-surface/90";
+  const classes = className ? `${baseClass} ${className}` : baseClass;
+
   return (
-    <div className="flex h-screen w-64 flex-col border-r border-border bg-surface/90">
+    <div className={classes}>
       <div className="flex h-16 items-center justify-between border-b border-border px-5">
         <div className="text-lg font-semibold text-primary">InvestPro</div>
         {isAuthenticated ? (
@@ -53,9 +65,8 @@ export default function Sidebar({ onNavigate }: Props) {
       </nav>
 
       <div className="mt-auto border-t border-border p-4 text-xs text-muted">
-        © {new Date().getFullYear()} InvestPro
+        {"\u00A9"} {new Date().getFullYear()} InvestPro
       </div>
     </div>
   );
 }
-
