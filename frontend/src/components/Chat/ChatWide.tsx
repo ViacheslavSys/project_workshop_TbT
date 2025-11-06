@@ -9,7 +9,6 @@ import {
   sendChatAudio,
   sendChatText,
   submitRiskAnswers,
-  analyzePortfolio,
   type PortfolioRecommendation,
   type RiskClarifyingQuestion,
   type RiskQuestion,
@@ -32,6 +31,8 @@ type RiskQuestionMessagePayload = {
   options: Array<{ id: string; label: string; value: string }>;
   clarificationCode?: string;
   allowMultiple?: boolean;
+  questionNumber?: number;
+  questionTotal?: number;
 };
 
 type RiskResponsePayload =
@@ -74,10 +75,6 @@ export default function ChatWide() {
   const [portfolioExplanation, setPortfolioExplanation] = useState<string | null>(null);
   const [portfolioExplanationError, setPortfolioExplanationError] = useState<string | null>(null);
   const [portfolioExplanationLoading, setPortfolioExplanationLoading] = useState(false);
-  // В разделе с другими useState, добавьте:
-  const [portfolioAnalysis, setPortfolioAnalysis] = useState<string | null>(null);
-  const [portfolioAnalysisLoading, setPortfolioAnalysisLoading] = useState(false);
-  const [portfolioAnalysisError, setPortfolioAnalysisError] = useState<string | null>(null);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const userIdRef = useRef<string>("");
@@ -161,28 +158,22 @@ export default function ChatWide() {
     dispatch(setTyping(true));
     setPending(true);
     setError(null);
-    setPortfolioAnalysis(null);
-    setPortfolioAnalysisError(null);
 
     try {
       const result = await calculatePortfolio(userId);
       if (result.recommendation) {
         appendMessage("ai", "portfolio_recommendation", result.recommendation);
-        
-        // Автоматически запускаем анализ после получения портфеля
-        setPortfolioAnalysisLoading(true);
-        try {
-          const analysisResult = await analyzePortfolio(userId);
-          setPortfolioAnalysis(analysisResult.analysis);
-          
-          // Добавляем сообщение с анализом
-          appendMessage("ai", "portfolio_analysis", analysisResult.analysis);
-        } catch (analysisErr) {
-          const analysisMessage = analysisErr instanceof Error ? analysisErr.message : "Не удалось получить анализ портфеля";
-          setPortfolioAnalysisError(analysisMessage);
-          appendMessage("ai", "message", `Анализ портфеля: ${analysisMessage}`);
-        } finally {
-          setPortfolioAnalysisLoading(false);
+        const recommendationWithId = result.recommendation as { portfolio_id?: string | number; id?: string | number } | null;
+        const portfolioId =
+          recommendationWithId?.portfolio_id ?? recommendationWithId?.id ?? null;
+        if (portfolioId) {
+          appendMessage("ai", "portfolio_analysis_link", { portfolioId: String(portfolioId) });
+        } else {
+          appendMessage(
+            "ai",
+            "message",
+            "Детальная аналитика доступна на странице портфеля в разделе «Портфели».",
+          );
         }
       } else {
         appendMessage(
@@ -276,9 +267,13 @@ export default function ChatWide() {
 
   const mapRiskQuestionToPayload = (
     question: RiskQuestion,
+    questionNumber?: number,
+    questionTotal?: number,
   ): RiskQuestionMessagePayload => ({
     id: question.id,
     text: question.text,
+    questionNumber,
+    questionTotal,
     options: question.options.map((option, idx) => {
       const match = option.match(/^\s*([A-Za-zА-Яа-я])\)/);
       const value = match ? match[1].toUpperCase() : String.fromCharCode(65 + idx);
@@ -291,6 +286,29 @@ export default function ChatWide() {
     }),
     allowMultiple: false,
   });
+
+  const getQuestionProgress = (
+    questions: RiskQuestion[],
+    index: number,
+  ): { number?: number; total?: number } => {
+    if (index < 0 || index >= questions.length) {
+      return { number: undefined, total: undefined };
+    }
+    let total = 0;
+    let number: number | undefined;
+    for (let idx = 0; idx < questions.length; idx += 1) {
+      if (questions[idx]?.hidden) continue;
+      total += 1;
+      if (idx === index) {
+        number = total;
+      }
+    }
+    const target = questions[index];
+    if (!target || target.hidden) {
+      return { number: undefined, total };
+    }
+    return { number, total };
+  };
 
   const mapClarifyingQuestion = (
     question: RiskClarifyingQuestion,
@@ -341,7 +359,14 @@ export default function ChatWide() {
       setCurrentRiskIndex(0);
       setClarifyingQuestions([]);
       setClarificationAnswers({});
-      enqueueRiskQuestion(mapRiskQuestionToPayload(questions[0]));
+      const initialProgress = getQuestionProgress(questions, 0);
+      enqueueRiskQuestion(
+        mapRiskQuestionToPayload(
+          questions[0],
+          initialProgress.number,
+          initialProgress.total,
+        ),
+      );
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Не удалось загрузить вопросы теста";
@@ -486,12 +511,6 @@ export default function ChatWide() {
   const handleRiskAnswer = async (payload: RiskResponsePayload) => {
     if (!payload.answers.length) return;
 
-    appendMessage(
-      "user",
-      "message",
-      `Мой выбор: ${payload.text || payload.answers.join(", ")}`,
-    );
-
     if (payload.kind === "clarification") {
       const updated = { ...clarificationAnswers, [payload.code]: payload.answers[0] };
       setClarificationAnswers(updated);
@@ -508,7 +527,14 @@ export default function ChatWide() {
     const nextIndex = currentRiskIndex + 1;
     if (nextIndex < riskQuestions.length) {
       setCurrentRiskIndex(nextIndex);
-      enqueueRiskQuestion(mapRiskQuestionToPayload(riskQuestions[nextIndex]));
+      const nextProgress = getQuestionProgress(riskQuestions, nextIndex);
+      enqueueRiskQuestion(
+        mapRiskQuestionToPayload(
+          riskQuestions[nextIndex],
+          nextProgress.number,
+          nextProgress.total,
+        ),
+      );
     } else {
       await finalizeRiskAnswers(updatedAnswers);
     }
@@ -527,18 +553,29 @@ export default function ChatWide() {
           <aside className="hidden w-56 rounded-2xl border border-border bg-white/5 p-3 md:block">
             <div className="mb-2 text-xs text-muted">Этапы</div>
             <nav className="space-y-1">
-              {steps.map((item) => (
-                <button
-                  key={item.id}
-                  className={classNames(
-                    "w-full rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/5",
-                    stage === item.id ? "bg-white/10 text-text" : "text-muted",
-                  )}
-                  disabled
-                >
-                  {item.label}
-                </button>
-              ))}
+              {steps.map((item, index) => {
+                const isActive = stage === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    className={classNames(
+                      "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/5",
+                      isActive ? "bg-white/10 text-text" : "text-muted",
+                    )}
+                    disabled
+                  >
+                    <span
+                      className={classNames(
+                        "text-xs font-semibold",
+                        isActive ? "text-primary" : "text-muted",
+                      )}
+                    >
+                      {index + 1}.
+                    </span>
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
             </nav>
           </aside>
 
@@ -556,9 +593,6 @@ export default function ChatWide() {
                   portfolioExplanation={portfolioExplanation}
                   portfolioExplanationError={portfolioExplanationError}
                   portfolioExplanationLoading={portfolioExplanationLoading}
-                  portfolioAnalysis={portfolioAnalysis}
-                  portfolioAnalysisError={portfolioAnalysisError}
-                  portfolioAnalysisLoading={portfolioAnalysisLoading}
                 />
                 ))}
                 {typing ? (
@@ -650,9 +684,6 @@ function MessageBubble({
   portfolioExplanation?: string | null;
   portfolioExplanationError?: string | null;
   portfolioExplanationLoading?: boolean;
-  portfolioAnalysis?: string | null;
-  portfolioAnalysisError?: string | null;
-  portfolioAnalysisLoading?: boolean;
 }) {
   const isUser = sender === "user";
   let body: React.ReactNode;
@@ -676,11 +707,20 @@ function MessageBubble({
         explanationLoading={portfolioExplanationLoading}        
       />
     );
-  } else if (type === "portfolio_analysis" && !isUser) { // ДОБАВЬТЕ ЭТОТ БЛОК
-    body = (
-      <PortfolioAnalysisMessage 
-        analysis={content as string}
-      />
+  } else if (type === "portfolio_analysis_link" && !isUser) {
+    const payload = (content as { portfolioId?: string | number } | null);
+    const portfolioId =
+      typeof payload?.portfolioId === "number" || typeof payload?.portfolioId === "string"
+        ? String(payload.portfolioId)
+        : typeof content === "string" || typeof content === "number"
+          ? String(content)
+          : null;
+    body = portfolioId ? (
+      <Link to={`/portfolios/${portfolioId}`} className="btn">
+        Перейти к детальной аналитике
+      </Link>
+    ) : (
+      <div className="text-sm text-muted">Детальная аналитика доступна на странице портфеля.</div>
     );
   } else if (type === "audio") {
     const audio = content as { data?: string; mime?: string };
@@ -734,20 +774,19 @@ function RiskFormMessage({
   }
 
   const allowMultiple = !!payload.allowMultiple;
-
-  const toggle = (value: string) => {
-    setSelected((prev) => {
-      if (allowMultiple) {
-        return prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value];
-      }
-      return prev.includes(value) ? [] : [value];
-    });
-  };
-
-  const handleSubmit = () => {
-    if (!selected.length || submitted) return;
+  const questionPrefix =
+    payload.questionNumber === undefined
+      ? null
+      : payload.questionTotal
+        ? `${payload.questionNumber}/${payload.questionTotal}`
+        : String(payload.questionNumber);
+  const questionTitle = questionPrefix ? `${questionPrefix}. ${payload.text}` : payload.text;
+  const submitAnswers = (answers: string[]) => {
+    if (!answers.length) {
+      return;
+    }
     const selectedLabels = payload.options
-      .filter((option) => selected.includes(option.value))
+      .filter((option) => answers.includes(option.value))
       .map((option) => option.label)
       .join(", ");
     setSubmitted(true);
@@ -755,16 +794,35 @@ function RiskFormMessage({
       onSubmit?.({
         kind: "clarification",
         code: payload.clarificationCode,
-        answers: selected,
+        answers,
         text: selectedLabels,
       });
     } else if (payload.id !== null) {
       onSubmit?.({
         kind: "question",
         questionId: payload.id,
-        answers: selected,
+        answers,
         text: selectedLabels,
       });
+    }
+  };
+
+  const toggle = (value: string) => {
+    if (submitted) {
+      return;
+    }
+    const next = allowMultiple
+      ? selected.includes(value)
+        ? selected.filter((item) => item !== value)
+        : [...selected, value]
+      : selected.includes(value)
+        ? []
+        : [value];
+
+    setSelected(next);
+
+    if (next.length) {
+      submitAnswers(next);
     }
   };
 
@@ -774,26 +832,32 @@ function RiskFormMessage({
         <div className="text-xs uppercase text-muted">
           {payload.clarificationCode ? "Уточняющий вопрос" : "Вопрос теста"}
         </div>
-        <div className="mt-1 text-sm font-medium">{payload.text}</div>
+        <div className="mt-1 text-sm font-medium">{questionTitle}</div>
       </div>
       <div className="space-y-2">
-        {payload.options.map((option) => (
-          <label key={option.id} className="flex items-center gap-2 text-sm">
-            <input
-              type={allowMultiple ? "checkbox" : "radio"}
-              className="accent-primary"
-              checked={selected.includes(option.value)}
-              onChange={() => toggle(option.value)}
-              disabled={submitted}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
-      </div>
-      <div>
-        <button className="btn" onClick={handleSubmit} disabled={!selected.length || submitted}>
-          Зафиксировать ответ
-        </button>
+        {payload.options.map((option) => {
+          const isSelected = selected.includes(option.value);
+          return (
+            <label
+              key={option.id}
+              className={classNames(
+                "flex items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+                isSelected
+                  ? "border-primary/70 bg-primary/15 text-primary"
+                  : "border-transparent bg-white/5 hover:bg-white/10",
+              )}
+            >
+              <input
+                type={allowMultiple ? "checkbox" : "radio"}
+                className="accent-primary"
+                checked={isSelected}
+                onChange={() => toggle(option.value)}
+                disabled={submitted}
+              />
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
       </div>
     </div>
   );
@@ -820,10 +884,10 @@ function RiskResultMessage({ result }: { result: RiskProfileResult }) {
   const normalizedProfile = (() => {
     const value = profile?.trim() ?? "";
     const key = value.toLowerCase();
-    return profileLabelMap[key] ??(value || "—");
+    return profileLabelMap[key] ?? (value || "-");
   })();
 
-  const horizonLabel = investment_horizon?.trim() || "—";
+  const horizonLabel = investment_horizon?.trim() || "-";
 
   const rows = [
     { label: "Консервативный", value: conservative_score },
@@ -832,57 +896,33 @@ function RiskResultMessage({ result }: { result: RiskProfileResult }) {
   ];
 
   return (
-    <div className="w-full max-w-[720px] overflow-hidden rounded-xl border border-border bg-white/5 shadow-sm">
-      <div className="flex items-center justify-between border-b border-white/10 bg-white/10 px-4 py-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
-          Риск-профиль
-        </span>
-        <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">
-          {normalizedProfile}
-        </span>
+    <div className="w-full max-w-[520px] rounded-lg border border-border/60 bg-white/5 px-4 py-4 text-sm text-text">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <span className="text-xs uppercase tracking-wide text-muted">Риск-профиль</span>
+        <span className="text-base font-semibold text-text">{normalizedProfile}</span>
       </div>
 
-      <div className="space-y-4 px-4 py-4 text-sm text-text">
-        <div className="text-xs text-muted">
-          Горизонт инвестирования:
-          <span className="ml-1 text-sm font-medium text-text">{horizonLabel}</span>
-        </div>
-
-        <div className="overflow-hidden rounded-lg border border-white/10">
-          <table className="w-full border-collapse text-sm">
-            <thead className="bg-white/5 text-xs uppercase tracking-wide text-muted">
-              <tr>
-                <th className="px-4 py-3 text-left font-semibold">Категория</th>
-                <th className="px-4 py-3 text-right font-semibold">Баллы</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr
-                  key={row.label}
-                  className={classNames(
-                    "bg-transparent text-sm text-text",
-                    index !== 0 ? "border-t border-white/10" : undefined,
-                  )}
-                >
-                  <td className="px-4 py-3 text-muted">{row.label}</td>
-                  <td className="px-4 py-3 text-right text-base font-semibold text-text">
-                    {row.value}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="rounded-lg bg-white/5 px-4 py-3 text-xs text-muted">
-          Мы используем ваш риск-профиль, чтобы подобрать подходящий инвестиционный портфель на
-          следующем шаге.
-        </div>
+      <div className="mt-4 flex flex-col gap-1">
+        <span className="text-xs uppercase text-muted">Инвестиционный горизонт</span>
+        <span className="text-sm font-medium text-text">{horizonLabel}</span>
       </div>
+
+      <dl className="mt-4 space-y-2">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-baseline justify-between gap-3">
+            <dt className="text-xs uppercase text-muted">{row.label}</dt>
+            <dd className="text-sm font-semibold text-text">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <p className="mt-4 text-xs text-muted">
+        Мы учитываем ваш риск-профиль, подбирая рекомендации по дальнейшим шагам.
+      </p>
     </div>
   );
 }
+
 
 
 function PortfolioMessage({
@@ -1153,312 +1193,4 @@ function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
   }
 
   return arrayBuffer;
-}
-
-function PortfolioAnalysisMessage({ analysis }: { analysis: string }) {
-  // Функция для очистки заголовков от **
-  const cleanHeaderText = (text: string): string => {
-    return text.replace(/\*\*/g, '');
-  };
-
-  // Функция для парсинга и рендеринга форматированного текста
-  const renderFormattedText = (text: string) => {
-    if (!text) return null;
-
-    const lines = text.split('\n');
-    const elements: React.ReactNode[] = [];
-    let inList = false;
-    let listItems: React.ReactNode[] = [];
-    let inCodeBlock = false;
-    let codeLines: string[] = [];
-
-    lines.forEach((line, index) => {
-      let content = line.trim();
-
-      // Обработка блоков кода ```
-      if (content.startsWith('```')) {
-        if (!inCodeBlock) {
-          inCodeBlock = true;
-          codeLines = [];
-          return;
-        } else {
-          inCodeBlock = false;
-          elements.push(
-            <pre key={`code-${index}`} className="bg-gray-900/50 rounded-lg p-4 my-3 overflow-x-auto text-xs border border-gray-700">
-              <code className="text-gray-200">
-                {codeLines.join('\n')}
-              </code>
-            </pre>
-          );
-          return;
-        }
-      }
-
-      if (inCodeBlock) {
-        codeLines.push(line);
-        return;
-      }
-
-      // Обработка формул в обратных кавычках (исправленная версия)
-      const formulaMatch = content.match(/^`(.*?)`\.?$/);
-      if (formulaMatch) {
-        const formulaContent = formulaMatch[1].trim();
-        
-        elements.push(
-          <div key={index} className="bg-gray-900/30 rounded-lg p-3 my-3 font-mono text-sm border border-gray-700 text-center">
-            {renderInlineFormatting(formulaContent)}
-          </div>
-        );
-        return;
-      }
-
-      // Обработка заголовков с цифрами (1. **текст**, 2. **текст** и т.д.)
-      const numberedHeaderMatch = content.match(/^(\d+)\.\s+\*\*(.*?)\*\*/);
-      if (numberedHeaderMatch) {
-        const cleanHeader = cleanHeaderText(numberedHeaderMatch[2]);
-        elements.push(
-          <h3 key={index} className="text-base font-bold mt-6 mb-3 text-text border-l-4 border-primary pl-3">
-            <span className="text-primary mr-2">{numberedHeaderMatch[1]}.</span>
-            {cleanHeader}
-          </h3>
-        );
-        return;
-      }
-
-      // Обработка обычных заголовков ###
-      if (content.startsWith('### ')) {
-        const cleanHeader = cleanHeaderText(content.replace('### ', ''));
-        elements.push(
-          <h3 key={index} className="text-base font-bold mt-6 mb-3 text-text border-l-4 border-primary pl-3">
-            {cleanHeader}
-          </h3>
-        );
-        return;
-      }
-
-      // Обработка подзаголовков ####
-      if (content.startsWith('#### ')) {
-        const cleanHeader = cleanHeaderText(content.replace('#### ', ''));
-        elements.push(
-          <h4 key={index} className="text-sm font-semibold mt-4 mb-2 text-text opacity-90">
-            {cleanHeader}
-          </h4>
-        );
-        return;
-      }
-
-      // Обработка жирных подзаголовков **текст** (без цифр в начале)
-      const boldHeaderMatch = content.match(/^\*\*(.*?)\*\*$/);
-      if (boldHeaderMatch && !content.match(/^\d+\./) && content === line.trim()) {
-        const cleanHeader = cleanHeaderText(boldHeaderMatch[1]);
-        elements.push(
-          <h4 key={index} className="text-sm font-semibold mt-4 mb-2 text-text bg-primary/10 px-3 py-2 rounded-lg">
-            {cleanHeader}
-          </h4>
-        );
-        return;
-      }
-
-      // Обработка разделителей (увеличено расстояние)
-      if (content === '---' || content.startsWith('--- ')) {
-        elements.push(
-          <div key={index} className="my-16 flex items-center"
-          style={{ margin: '2rem 0' }}> 
-            <div className="flex-1 border-t border-white/20"></div>
-            {content.length > 3 && (
-              <span className="mx-4 text-xs text-muted uppercase tracking-wide">
-                {content.replace('---', '').trim()}
-              </span>
-            )}
-            <div className="flex-1 border-t border-white/20"></div>
-          </div>
-        );
-        return;
-      }
-
-      // Обработка формул (строки с = и математическими операциями) - удаляем этот блок
-      // так как он конфликтует с обработкой формул в обратных кавычках
-      // if (content.includes('=') && (content.includes('×') || content.includes('+') || content.includes('−') || content.includes('(') || content.includes('≈'))) {
-      //   elements.push(
-      //     <div key={index} className="bg-gray-900/30 rounded-lg p-3 my-2 font-mono text-sm border border-gray-700 text-center">
-      //       {renderInlineFormatting(content)}
-      //     </div>
-      //   );
-      //   return;
-      // }
-
-      // Обработка списков
-      if (content.startsWith('- ') || content.startsWith('• ') || /^\d+\./.test(content)) {
-        if (!inList) {
-          inList = true;
-        }
-        
-        const listItem = content.replace(/^[-•]\s+/, '').replace(/^\d+\.\s+/, '');
-        const isOrdered = /^\d+\./.test(content);
-        
-        listItems.push(
-          <li key={`${index}-item`} className="text-sm leading-6 mb-1 flex items-start">
-            <span className="text-primary mr-2 mt-1 flex-shrink-0">
-              {isOrdered ? `${content.match(/^\d+/)?.[0]}.` : '•'}
-            </span>
-            <span className="flex-1">
-              {renderInlineFormatting(listItem)}
-            </span>
-          </li>
-        );
-        return;
-      } else if (inList && listItems.length > 0) {
-        elements.push(
-          <ul key={`${index}-list`} className="space-y-2 my-3">
-            {listItems}
-          </ul>
-        );
-        listItems = [];
-        inList = false;
-      }
-
-      // Обработка обычного текста
-      if (content && !content.startsWith('- ') && !content.startsWith('• ') && !/^\d+\./.test(content)) {
-        elements.push(
-          <p key={index} className="text-sm leading-7 mb-3">
-            {renderInlineFormatting(content)}
-          </p>
-        );
-      }
-    });
-
-    // Добавляем оставшиеся элементы списка
-    if (inList && listItems.length > 0) {
-      elements.push(
-        <ul key="final-list" className="space-y-2 my-3">
-          {listItems}
-        </ul>
-      );
-    }
-
-    return elements;
-  };
-
-  // Функция для обработки inline-форматирования
-  const renderInlineFormatting = (text: string): React.ReactNode => {
-    if (!text) return null;
-
-    const elements: React.ReactNode[] = [];
-    let currentText = text;
-    let key = 0;
-
-    // Обработка жирного текста **текст**
-    const processBold = (input: string): React.ReactNode[] => {
-      const parts: React.ReactNode[] = [];
-      const boldRegex = /\*\*(.*?)\*\*/g;
-      let lastIndex = 0;
-      let match;
-
-      while ((match = boldRegex.exec(input)) !== null) {
-        // Текст до жирного
-        if (match.index > lastIndex) {
-          parts.push(...processItalic(input.slice(lastIndex, match.index)));
-        }
-
-        // Жирный текст
-        parts.push(
-          <strong key={key++} className="font-bold text-text">
-            {processItalic(match[1])}
-          </strong>
-        );
-
-        lastIndex = match.index + match[0].length;
-      }
-
-      // Остаток текста
-      if (lastIndex < input.length) {
-        parts.push(...processItalic(input.slice(lastIndex)));
-      }
-
-      return parts;
-    };
-
-    // Обработка курсива *текст*
-    const processItalic = (input: string): React.ReactNode[] => {
-      const parts: React.ReactNode[] = [];
-      const italicRegex = /\*(.*?)\*/g;
-      let lastIndex = 0;
-      let match;
-
-      while ((match = italicRegex.exec(input)) !== null) {
-        // Текст до курсива
-        if (match.index > lastIndex) {
-          parts.push(...processEmoji(input.slice(lastIndex, match.index)));
-        }
-
-        // Курсив текст
-        parts.push(
-          <em key={key++} className="italic text-text opacity-90">
-            {processEmoji(match[1])}
-          </em>
-        );
-
-        lastIndex = match.index + match[0].length;
-      }
-
-      // Остаток текста
-      if (lastIndex < input.length) {
-        parts.push(...processEmoji(input.slice(lastIndex)));
-      }
-
-      return parts;
-    };
-
-    // Функция для обработки эмодзи и специальных символов
-    const processEmoji = (input: string): React.ReactNode[] => {
-      return input.split(/([\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}])/gu).map((part, idx) => {
-        if (!part) return null;
-        
-        // Добавляем пробелы после эмодзи для лучшей читаемости
-        const isEmoji = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}]/u.test(part);
-        
-        return (
-          <span key={`emoji-${idx}`} className={isEmoji ? "inline-block mx-0.5" : ""}>
-            {part}
-          </span>
-        );
-      }).filter(Boolean) as React.ReactNode[];
-    };
-
-    // Начинаем обработку с жирного текста
-    elements.push(...processBold(currentText));
-
-    return elements.length > 0 ? <>{elements}</> : <>{text}</>;
-  };
-
-  return (
-    <div className="w-full max-w-[780px] overflow-hidden rounded-2xl border border-white/10 bg-white/5 text-text shadow-lg">
-      <div className="flex items-center justify-between border-b border-white/10 bg-white/10 px-6 py-4">
-        <span className="text-sm font-bold uppercase tracking-wider text-text">
-          📊 Анализ портфеля
-        </span>
-        <div className="flex items-center gap-2">
-          <svg className="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        </div>
-      </div>
-
-      <div className="px-6 py-5">
-        <div className="space-y-1">
-          {renderFormattedText(analysis)}
-        </div>
-        
-        <div className="mt-6 rounded-xl bg-gradient-to-r from-primary/10 to-blue-500/10 px-4 py-3 text-sm border border-primary/20">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">💡</span>
-            <div>
-              <div className="font-semibold text-text">Автоматический анализ</div>
-              <div className="text-muted mt-1">Помогает лучше понять структуру портфеля и потенциальные риски</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
