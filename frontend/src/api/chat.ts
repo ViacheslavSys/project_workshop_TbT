@@ -1,3 +1,5 @@
+export { getAnonymousUserId } from "../shared/utils/anonymousUser";
+
 const API_BASE = (() => {
   const configured = (import.meta as any)?.env?.VITE_API_URL;
   if (configured) return String(configured).replace(/\/+$/, "");
