@@ -31,3 +31,6 @@ openai
 pydantic
 celery
 bs4
+
+bcrypt
+python-jose[cryptography]==3.3.0
