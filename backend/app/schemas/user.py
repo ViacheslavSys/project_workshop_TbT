@@ -20,7 +20,9 @@ class UserBase(BaseModel):
     def validate_username(cls, v):
         if not re.match(username_regex, v):
             raise ValueError(
-                'Username can only contain letters, numbers, dots, dashes and underscores'
+                'Username can only contain '
+                'letters, numbers, dots, '
+                'dashes and underscores'
             )
         return v
 
