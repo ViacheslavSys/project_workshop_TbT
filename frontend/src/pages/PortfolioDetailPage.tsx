@@ -5,7 +5,8 @@ import { samplePortfolios } from "../data/samplePortfolios";
 import PortfolioAssetsTable, { type PortfolioAssetRow } from "../components/PortfolioAssetsTable";
 import InfoTip from "../components/InfoTip";
 import MLReport from "../components/MLReport";
-import { fetchPortfolioAnalysis, getAnonymousUserId } from "../api/chat";
+import { fetchPortfolioAnalysis } from "../api/chat";
+import { getAnonymousUserId } from "../shared/utils/anonymousUser";
 import type { RootState } from "../store/store";
 
 function clamp(value: number, min: number, max: number) {
