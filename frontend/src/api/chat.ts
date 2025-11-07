@@ -1,4 +1,4 @@
-import { getAnonymousUserId as getStoredAnonymousUserId } from "../shared/utils/anonymousUser.ts";
+import { getAnonymousUserId } from "../shared/utils/anonymousUser";
 
 const API_BASE = (() => {
   const configured = (import.meta as any)?.env?.VITE_API_URL;
@@ -267,5 +267,5 @@ export const analyzePortfolio = async (userId: string): Promise<PortfolioAnalysi
   return handleResponse<PortfolioAnalysisResponse>(res);
 };
 
-export { getStoredAnonymousUserId as getAnonymousUserId };
+export { getAnonymousUserId };
 
