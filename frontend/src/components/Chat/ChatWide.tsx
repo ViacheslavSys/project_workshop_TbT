@@ -14,7 +14,7 @@ import {
   type RiskProfileResult,
   
 } from "../../api/chat";
-import { getAnonymousUserId } from "../../shared/utils/anonymousUser";
+import { getAnonymousUserId } from "../../shared/anonymousUser";
 import { type RootState } from "../../store/store";
 import {
   pushMessage,

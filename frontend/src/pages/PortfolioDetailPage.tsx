@@ -6,7 +6,7 @@ import PortfolioAssetsTable, { type PortfolioAssetRow } from "../components/Port
 import InfoTip from "../components/InfoTip";
 import MLReport from "../components/MLReport";
 import { fetchPortfolioAnalysis } from "../api/chat";
-import { getAnonymousUserId } from "../shared/utils/anonymousUser";
+import { getAnonymousUserId } from "../shared/anonymousUser";
 import type { RootState } from "../store/store";
 
 function clamp(value: number, min: number, max: number) {
