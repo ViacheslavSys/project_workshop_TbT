@@ -44,6 +44,16 @@
   background: linear-gradient(180deg, rgba(37, 99, 235, 0.9), rgba(37, 99, 235, 0.6));
 }
 
+@media (max-width: 768px) {
+  .scrollbar-themed {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-themed::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Chatbot kit tiny dark tune-ups */
 .react-chatbot-kit-chat-container { background: transparent; border: 1px solid var(--border); border-radius: var(--radius); }
 .react-chatbot-kit-chat-bot-message { background: rgba(255,255,255,.06); color: var(--text); }

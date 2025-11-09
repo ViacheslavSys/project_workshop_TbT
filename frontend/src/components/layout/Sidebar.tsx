@@ -1,11 +1,7 @@
 import { NavLink } from "react-router-dom";
-import { useSelector } from "react-redux";
-import type { RootState } from "../../store/store";
+import { useAppSelector } from "../../app/store/hooks";
 
-type Props = {
-  onNavigate?: () => void;
-  className?: string;
-};
+type Props = { onNavigate?: () => void };
 
 const NAV_ITEMS = [
   { to: "/chat", label: "Чат с ассистентом", authOnly: null },
@@ -14,8 +10,8 @@ const NAV_ITEMS = [
   { to: "/auth", label: "Вход / регистрация", authOnly: false },
 ] as const;
 
-export default function Sidebar({ onNavigate, className }: Props) {
-  const { isAuthenticated, user } = useSelector((state: RootState) => state.auth);
+export default function Sidebar({ onNavigate }: Props) {
+  const { isAuthenticated, user } = useAppSelector((state) => state.auth);
 
   const initials = (user?.full_name || user?.username || "")
     .split(/\s+/)
@@ -30,12 +26,8 @@ export default function Sidebar({ onNavigate, className }: Props) {
     return item.authOnly ? isAuthenticated : !isAuthenticated;
   });
 
-  const baseClass =
-    "flex h-full md:h-screen w-64 flex-col border-r border-border bg-surface/90";
-  const classes = className ? `${baseClass} ${className}` : baseClass;
-
   return (
-    <div className={classes}>
+    <div className="flex h-screen w-64 flex-col border-r border-border bg-surface/90">
       <div className="flex h-16 items-center justify-between border-b border-border px-5">
         <div className="text-lg font-semibold text-primary">InvestPro</div>
         {isAuthenticated ? (

@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+﻿import { Link } from "react-router-dom";
 import { samplePortfolios } from "../data/samplePortfolios";
 import InfoTip from "../components/InfoTip";
 
@@ -31,33 +31,39 @@ export default function PortfolioPage(){
         const topAssets = [...p.assets].sort((a,b)=>b.allocation-a.allocation).slice(0,3);
         const riskColor = p.riskLevel === 'Low' ? 'hsl(120 60% 45%)' : p.riskLevel === 'Moderate' ? 'hsl(60 70% 55%)' : 'hsl(10 80% 55%)';
         return (
-          <Link key={p.id} to={`/portfolios/${p.id}`} className="card block hover:opacity-95 transition-transform duration-200 hover:-translate-y-0.5">
+          <Link
+            key={p.id}
+            to={`/portfolios/${p.id}`}
+            className="card block transition-transform duration-200 hover:-translate-y-0.5 hover:opacity-95"
+          >
             <div className="card-body">
               <div className="h-1 w-full rounded bg-gradient-to-r from-success/60 via-primary/60 to-danger/60 opacity-60 mb-3" />
-              <div className="flex justify-between items-start mb-3">
-                <div>
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
                   <h3 className="text-lg font-semibold">{p.name}</h3>
-                  <p className="text-xs text-muted mt-0.5 flex items-center gap-1">
+                  <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted">
                     Риск-профиль: <span className="px-1.5 py-0.5 rounded border border-border" style={{ background: 'rgba(255,255,255,.06)', color: riskColor }}>{p.riskLevel}</span>
                     <InfoTip title="Риск-профиль">Общая склонность инвестора к риску (низкий, умеренный, высокий) на основе опроса и/или данных.</InfoTip>
                   </p>
                 </div>
-                <span className="text-xs px-2 py-1 rounded-lg bg-white/5 border border-border">Обзор</span>
+                <span className="self-start rounded-lg border border-border bg-white/5 px-2 py-1 text-xs">Обзор</span>
               </div>
 
-              <div className="flex items-end justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <div className="text-2xl font-bold">${p.totalValue.toLocaleString()}</div>
                   <div className="text-sm tabular-nums" style={{ color: colorFor(p.expectedReturn, 0, 0.2) }}>
-                    {(p.expectedReturn*100).toFixed(1)}% <span className="text-muted">ожид. дох.</span>
-                    <InfoTip title="Ожидаемая доходность">Среднегодовой прогноз доходности портфеля на горизонте, не гарантирован.</InfoTip>
+                    {(p.expectedReturn*100).toFixed(1)}% <span className="text-muted">ожид. доход.</span>
+                    <InfoTip title="Ожидаемая доходность">Среднегодовая оценка доходности портфеля на выбранном горизонте, не является гарантией.</InfoTip>
                   </div>
                 </div>
-                <Sparkline data={p.sparkline} />
+                <div className="sm:-mr-1">
+                  <Sparkline data={p.sparkline} />
+                </div>
               </div>
 
               <div className="mt-4">
-                <div className="flex justify-between text-xs text-muted mb-1">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                   <span>Крупнейшая доля<InfoTip title="Крупнейшая доля">Максимальная доля одного актива в портфеле.</InfoTip></span>
                   <span className="tabular-nums">{(maxAlloc*100).toFixed(1)}%</span>
                 </div>
@@ -66,7 +72,7 @@ export default function PortfolioPage(){
                 </div>
                 <div className="text-xs text-muted mt-1 flex items-center gap-1">
                   Sharpe: <span className="tabular-nums" style={{ color: colorFor(p.metrics.sharpeRatio, 0, 1.6) }}>{p.metrics.sharpeRatio.toFixed(2)}</span>
-                  <InfoTip title="Sharpe Ratio">Показывает соотношение доходности к риску. Выше — лучше.</InfoTip>
+                  <InfoTip title="Sharpe Ratio">Показывает соотношение доходности к риску. Чем выше показатель, тем эффективнее стратегия.</InfoTip>
                 </div>
                 <div className="mt-2 flex gap-1 flex-wrap">
                   {topAssets.map(a => (
@@ -83,3 +89,4 @@ export default function PortfolioPage(){
     </div>
   );
 }
+

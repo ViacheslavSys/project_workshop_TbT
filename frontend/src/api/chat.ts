@@ -253,17 +253,7 @@ export async function fetchPortfolioAnalysis(userId: string) {
   const data = await handleResponse<PortfolioAnalysisResponse>(res); // Исправлено с PortfolioAnalysisReponse на PortfolioAnalysisResponse
   return data.analysis;
 }
-let cachedAnonId: string | null = null;
 
-export function getAnonymousUserId() {
-  if (cachedAnonId) return cachedAnonId;
-  try {
-    cachedAnonId = crypto.randomUUID();
-  } catch {
-    cachedAnonId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  }
-  return cachedAnonId;
-}
 export const analyzePortfolio = async (userId: string): Promise<PortfolioAnalysisResponse> => {
   const res = await fetch(buildUrl("/portfolios/analyze"), {
     method: "POST",

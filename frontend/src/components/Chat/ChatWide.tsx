@@ -1,11 +1,10 @@
-﻿import React, { useCallback, useEffect, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   calculatePortfolio,
   clarifyRiskProfile,
   fetchRiskQuestions,
-  getAnonymousUserId,
   sendChatAudio,
   sendChatText,
   submitRiskAnswers,
@@ -15,6 +14,7 @@ import {
   type RiskProfileResult,
   
 } from "../../api/chat";
+import { getAnonymousUserId } from "../../shared/utils/anonymousUser";
 import { type RootState } from "../../store/store";
 import {
   pushMessage,
@@ -38,6 +38,109 @@ type RiskQuestionMessagePayload = {
 type RiskResponsePayload =
   | { kind: "question"; questionId: number; answers: string[]; text: string }
   | { kind: "clarification"; code: string; answers: string[]; text: string };
+
+
+const RISK_STATE_STORAGE_KEY = "chat_risk_state";
+
+type PersistedRiskState = {
+  riskQuestions: RiskQuestion[];
+  riskAnswers: Record<number, string>;
+  currentRiskIndex: number;
+  clarifyingQuestions: RiskClarifyingQuestion[];
+  clarificationAnswers: Record<string, string>;
+};
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isRiskQuestionValue(value: unknown): value is RiskQuestion {
+  if (!isPlainRecord(value)) return false;
+  if (typeof value.id !== "number" || typeof value.text !== "string") return false;
+  if (!isStringArray(value.options)) return false;
+  if ("hidden" in value && value.hidden !== undefined && typeof value.hidden !== "boolean") return false;
+  return true;
+}
+
+function isRiskClarifyingQuestionValue(value: unknown): value is RiskClarifyingQuestion {
+  if (!isPlainRecord(value)) return false;
+  if (typeof value.code !== "string" || typeof value.question !== "string") return false;
+  return isStringArray(value.options);
+}
+
+function normalizeNumberKeyRecord(source: Record<string, unknown>): Record<number, string> {
+  const result: Record<number, string> = {};
+  Object.entries(source).forEach(([key, value]) => {
+    if (typeof value !== "string") return;
+    const numeric = Number(key);
+    if (Number.isNaN(numeric)) return;
+    result[numeric] = value;
+  });
+  return result;
+}
+
+function normalizeStringRecord(source: Record<string, unknown>): Record<string, string> {
+  const result: Record<string, string> = {};
+  Object.entries(source).forEach(([key, value]) => {
+    if (typeof value === "string") {
+      result[key] = value;
+    }
+  });
+  return result;
+}
+
+function loadPersistedRiskState(): PersistedRiskState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(RISK_STATE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!isPlainRecord(parsed)) return null;
+
+    const questionsRaw = Array.isArray(parsed.riskQuestions) ? parsed.riskQuestions : [];
+    const clarifyingRaw = Array.isArray(parsed.clarifyingQuestions) ? parsed.clarifyingQuestions : [];
+    const answersRaw = isPlainRecord(parsed.riskAnswers) ? parsed.riskAnswers : {};
+    const clarificationAnswersRaw = isPlainRecord(parsed.clarificationAnswers)
+      ? parsed.clarificationAnswers
+      : {};
+
+    const riskQuestions = questionsRaw.filter(isRiskQuestionValue);
+    const clarifyingQuestions = clarifyingRaw.filter(isRiskClarifyingQuestionValue);
+    const riskAnswers = normalizeNumberKeyRecord(answersRaw);
+    const clarificationAnswers = normalizeStringRecord(clarificationAnswersRaw);
+
+    const currentRiskIndex = typeof parsed.currentRiskIndex === "number"
+      ? parsed.currentRiskIndex
+      : (riskQuestions.length ? 0 : -1);
+
+    return {
+      riskQuestions,
+      riskAnswers,
+      currentRiskIndex,
+      clarifyingQuestions,
+      clarificationAnswers,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistRiskState(state: PersistedRiskState | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!state) {
+      sessionStorage.removeItem(RISK_STATE_STORAGE_KEY);
+      return;
+    }
+    sessionStorage.setItem(RISK_STATE_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore persistence errors */
+  }
+}
 
 const INITIAL_BOT_MESSAGE =
   "Привет! Давайте сформулируем цель по SMART: расскажите про сумму, сроки, стартовый капитал и зачем вы копите. Я помогу сохранить всё в удобном виде.";
@@ -63,18 +166,62 @@ export default function ChatWide() {
     isAuth: state.auth.isAuthenticated,
   }));
 
+  const persistedRiskState = useMemo(loadPersistedRiskState, []);
+
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [, setPending] = useState(false);
-  const [riskQuestions, setRiskQuestions] = useState<RiskQuestion[]>([]);
-  const [riskAnswers, setRiskAnswers] = useState<Record<number, string>>({});
-  const [currentRiskIndex, setCurrentRiskIndex] = useState<number>(-1);
-  const [clarifyingQuestions, setClarifyingQuestions] = useState<RiskClarifyingQuestion[]>([]);
-  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
+  const [riskQuestions, setRiskQuestions] = useState<RiskQuestion[]>(() =>
+    persistedRiskState?.riskQuestions ?? []
+  );
+  const [riskAnswers, setRiskAnswers] = useState<Record<number, string>>(() =>
+    persistedRiskState?.riskAnswers ?? {}
+  );
+  const [currentRiskIndex, setCurrentRiskIndex] = useState<number>(() =>
+    persistedRiskState?.currentRiskIndex ?? -1
+  );
+  const [clarifyingQuestions, setClarifyingQuestions] = useState<RiskClarifyingQuestion[]>(() =>
+    persistedRiskState?.clarifyingQuestions ?? []
+  );
+  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>(() =>
+    persistedRiskState?.clarificationAnswers ?? {}
+  );
+
+  useEffect(() => {
+    if (stage !== "risk") {
+      persistRiskState(null);
+      return;
+    }
+    persistRiskState({
+      riskQuestions,
+      riskAnswers,
+      currentRiskIndex,
+      clarifyingQuestions,
+      clarificationAnswers,
+    });
+  }, [
+    stage,
+    riskQuestions,
+    riskAnswers,
+    currentRiskIndex,
+    clarifyingQuestions,
+    clarificationAnswers,
+  ]);
+
   const [portfolioExplanation, setPortfolioExplanation] = useState<string | null>(null);
   const [portfolioExplanationError, setPortfolioExplanationError] = useState<string | null>(null);
   const [portfolioExplanationLoading, setPortfolioExplanationLoading] = useState(false);
+
+  useEffect(() => {
+    if (stage === "goals" && messages.length === 0) {
+      setRiskQuestions([]);
+      setRiskAnswers({});
+      setCurrentRiskIndex(-1);
+      setClarifyingQuestions([]);
+      setClarificationAnswers({});
+    }
+  }, [stage, messages.length]);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const userIdRef = useRef<string>("");
@@ -541,15 +688,15 @@ export default function ChatWide() {
   };
 
   return (
-    <div className="card">
+    <div className="card flex h-[calc(100dvh - 112px)] flex-col md:h-auto">
       <div className="card-header flex items-center justify-between">
         <div>ИИ-помощник</div>
         {typing ? (
           <div className="text-xs text-muted">Ассистент думает…</div>
         ) : null}
       </div>
-      <div className="card-body">
-        <div className="flex gap-4">
+      <div className="card-body flex flex-1 min-h-0 flex-col">
+        <div className="flex h-full min-h-0 flex-col gap-4 md:flex-row">
           <aside className="hidden w-56 rounded-2xl border border-border bg-white/5 p-3 md:block">
             <div className="mb-2 text-xs text-muted">Этапы</div>
             <nav className="space-y-1">
@@ -579,11 +726,14 @@ export default function ChatWide() {
             </nav>
           </aside>
 
-          <div className="flex h-[75vh] flex-1 flex-col">
-            <div ref={listRef} className="flex-1 overflow-y-auto pr-1 scrollbar-themed">
+          <div className="relative flex w-full flex-1 min-h-0 flex-col md:h-[70vh] lg:h-[75vh]">
+            <div
+              ref={listRef}
+              className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 pb-24 scrollbar-themed sm:pb-0"
+            >
               <div className="flex flex-col gap-2">
                 {messages.map((message) => (
-                 <MessageBubble
+                <MessageBubble
                   key={message.id}
                   sender={message.sender}
                   type={message.type}
@@ -593,6 +743,8 @@ export default function ChatWide() {
                   portfolioExplanation={portfolioExplanation}
                   portfolioExplanationError={portfolioExplanationError}
                   portfolioExplanationLoading={portfolioExplanationLoading}
+                  riskAnswers={riskAnswers}
+                  clarificationAnswers={clarificationAnswers}
                 />
                 ))}
                 {typing ? (
@@ -603,14 +755,13 @@ export default function ChatWide() {
               </div>
             </div>
 
-            {error ? (
-              <div className="mt-2 text-xs text-danger">
-                {error}. Попробуйте еще раз или обновите страницу.
-              </div>
-            ) : null}
-
-            <div className="mt-3 flex items-center gap-2">
-              <div className="relative flex-1">
+            <div className="sticky bottom-0 left-0 right-0 z-10 flex flex-col gap-2 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] pt-3 backdrop-blur sm:static sm:mt-3 sm:flex-row sm:items-center sm:border-t-0 sm:bg-transparent sm:pb-0 sm:pt-0">
+              {error ? (
+                <div className="text-xs text-danger">
+                  {error}. Попробуйте еще раз или обновите страницу.
+                </div>
+              ) : null}
+              <div className="relative w-full flex-1">
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
@@ -622,7 +773,7 @@ export default function ChatWide() {
                     }
                   }}
                   rows={2}
-                  className="flex-1 w-full resize-none rounded-xl border border-border bg-white/5 px-3 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="min-h-[3.5rem] w-full resize-none rounded-xl border border-border bg-white/5 px-3 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary sm:min-h-0"
                   placeholder="Опишите вашу инвестиционную цель..."
                 />
                 <button
@@ -651,7 +802,7 @@ export default function ChatWide() {
 
               <button
                 className={classNames(
-                  "btn-secondary",
+                  "btn-secondary w-full sm:w-auto",
                   isRecording ? "opacity-80" : undefined,
                 )}
                 onClick={() => (isRecording ? stopRecording() : startRecording())}
@@ -675,6 +826,8 @@ function MessageBubble({
   portfolioExplanation,
   portfolioExplanationError,
   portfolioExplanationLoading,
+  riskAnswers,
+  clarificationAnswers,
 }: {
   sender: MessageSender;
   type: string;
@@ -684,15 +837,30 @@ function MessageBubble({
   portfolioExplanation?: string | null;
   portfolioExplanationError?: string | null;
   portfolioExplanationLoading?: boolean;
+  riskAnswers?: Record<number, string>;
+  clarificationAnswers?: Record<string, string>;
 }) {
   const isUser = sender === "user";
   let body: React.ReactNode;
 
   if (type === "risk_question" && !isUser) {
+    const payload = content as RiskQuestionMessagePayload;
+    const preselected = useMemo(() => {
+      if (payload.clarificationCode && clarificationAnswers) {
+        const value = clarificationAnswers[payload.clarificationCode];
+        return value ? [value] : [];
+      }
+      if (payload.id !== null && riskAnswers) {
+        const value = riskAnswers[payload.id];
+        return value ? [value] : [];
+      }
+      return [];
+    }, [payload.id, payload.clarificationCode, riskAnswers, clarificationAnswers]);
     body = (
       <RiskFormMessage
-        payload={content as RiskQuestionMessagePayload}
+        payload={payload}
         onSubmit={onRiskAnswer}
+        preselected={preselected}
       />
     );
   } else if (type === "risk_result" && !isUser) {
@@ -757,17 +925,20 @@ function MessageBubble({
 function RiskFormMessage({
   payload,
   onSubmit,
+  preselected,
 }: {
   payload: RiskQuestionMessagePayload;
   onSubmit?: (payload: RiskResponsePayload) => void;
+  preselected?: string[];
 }) {
-  const [selected, setSelected] = useState<string[]>([]);
-  const [submitted, setSubmitted] = useState(false);
+  const [selected, setSelected] = useState<string[]>(() => preselected ?? []);
+  const [submitted, setSubmitted] = useState(() => Boolean(preselected?.length));
 
   useEffect(() => {
-    setSelected([]);
-    setSubmitted(false);
-  }, [payload.id, payload.clarificationCode]);
+    const initial = preselected && preselected.length ? [...preselected] : [];
+    setSelected(initial);
+    setSubmitted(initial.length > 0);
+  }, [payload.id, payload.clarificationCode, preselected]);
 
   if (!payload) {
     return <div className="text-sm text-muted">Вопрос недоступен.</div>;
@@ -1007,7 +1178,8 @@ function PortfolioMessage({
 
                   {assets.length ? (
                     <div className="overflow-hidden rounded-md border border-white/10">
-                      <table className="w-full text-xs md:text-sm">
+                      <div className="max-w-full overflow-x-auto">
+                        <table className="min-w-[520px] w-full text-xs md:text-sm">
                         <thead className="bg-white/5 text-xs uppercase tracking-wide text-muted">
                           <tr>
                             <th className="px-3 py-2 text-left font-semibold">Название</th>
@@ -1034,7 +1206,8 @@ function PortfolioMessage({
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                        </table>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-xs text-muted">Нет данных по активам.</div>
