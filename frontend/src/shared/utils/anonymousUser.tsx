@@ -38,3 +38,21 @@ export function getAnonymousUserId(): string {
     return generateAnonymousId();
   }
 }
+
+export function resetAnonymousUserId(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore storage errors */
+  }
+
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore storage errors */
+  }
+}

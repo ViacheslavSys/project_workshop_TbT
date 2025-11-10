@@ -160,6 +160,10 @@ export type PortfolioComposition = {
 };
 
 export type PortfolioRecommendation = {
+  portfolio_id?: string | number;
+  id?: string | number;
+  created_at?: string;
+  updated_at?: string;
   target_amount: number;
   initial_capital: number;
   investment_term_months: number;

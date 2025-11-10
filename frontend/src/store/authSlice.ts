@@ -8,6 +8,7 @@ import {
   type LoginPayload,
   type RegisterUserPayload,
 } from "../api/users";
+import { resetAnonymousUserId } from "../shared/utils/anonymousUser";
 import { loadToken, persistToken } from "./tokenStorage";
 
 export type User = BackendUser;
@@ -33,6 +34,23 @@ type ThunkConfig = {
 
 const FALLBACK_ERROR = "Не удалось выполнить запрос";
 const persistedToken = loadToken();
+
+function clearSessionScopedData() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    sessionStorage.clear();
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+function flushClientCache() {
+  clearSessionScopedData();
+  resetAnonymousUserId();
+}
 
 const initialState: AuthState = {
   user: null,
@@ -142,6 +160,7 @@ const authSlice = createSlice({
       state.error = null;
       state.initialized = true;
       persistToken(null);
+      flushClientCache();
     },
     clearAuthError(state) {
       state.error = null;
@@ -222,6 +241,7 @@ const authSlice = createSlice({
           state.isAuthenticated = false;
           state.accessToken = null;
           persistToken(null);
+          flushClientCache();
         }
       });
   },
