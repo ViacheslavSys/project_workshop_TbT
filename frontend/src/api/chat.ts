@@ -1,50 +1,6 @@
-const API_BASE = (() => {
-  const configured = (import.meta as any)?.env?.VITE_API_URL;
-  if (configured) return String(configured).replace(/\/+$/, "");
-  if (import.meta.env?.DEV) return "/api";
-  if (typeof window !== "undefined") return window.location.origin;
-  return "";
-})();
-
-function buildUrl(
-  path: string,
-  params?: Record<string, string | undefined>,
-): string {
-  const sanitizedPath = path.startsWith("/") ? path : `/${path}`;
-  const base = API_BASE.replace(/\/+$/, "");
-  const raw = `${base}${sanitizedPath}` || sanitizedPath;
-  const isAbsolute = /^https?:\/\//i.test(raw);
-  const url = isAbsolute
-    ? new URL(raw)
-    : new URL(
-        raw,
-        typeof window !== "undefined" ? window.location.origin : "http://localhost",
-      );
-
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined) url.searchParams.set(key, value);
-    });
-  }
-
-  return url.toString();
-}
+import { buildUrl, handleResponse } from "./http";
 
 type ChatBackendResponse = { response: string };
-
-async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = data?.detail || data?.message;
-    } catch {
-      /* ignore json parse errors */
-    }
-    throw new Error(detail || `Request failed with status ${res.status}`);
-  }
-  return res.json() as Promise<T>;
-}
 
 export async function sendChatText(userId: string, message: string) {
   const form = new FormData();

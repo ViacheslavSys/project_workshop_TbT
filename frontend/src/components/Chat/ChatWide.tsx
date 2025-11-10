@@ -159,11 +159,12 @@ function classNames(...cls: Array<string | false | null | undefined>) {
 
 export default function ChatWide() {
   const dispatch = useDispatch();
-  const { messages, typing, stage, isAuth } = useSelector((state: RootState) => ({
+  const { messages, typing, stage, isAuth, authUserId } = useSelector((state: RootState) => ({
     messages: state.chat.messages,
     typing: state.chat.typing,
     stage: state.chat.stage,
     isAuth: state.auth.isAuthenticated,
+    authUserId: state.auth.user?.id,
   }));
 
   const persistedRiskState = useMemo(loadPersistedRiskState, []);
@@ -232,8 +233,12 @@ export default function ChatWide() {
   const recorderChunksRef = useRef<BlobPart[]>([]);
 
   useEffect(() => {
-    userIdRef.current = getAnonymousUserId();
-  }, []);
+    if (authUserId) {
+      userIdRef.current = String(authUserId);
+    } else {
+      userIdRef.current = getAnonymousUserId();
+    }
+  }, [authUserId]);
 
   useEffect(() => {
     if (!listRef.current) return;
@@ -1367,3 +1372,4 @@ function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
 
   return arrayBuffer;
 }
+

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../../app/store/hooks";
 import { pushMessage, setTyping } from "../store/chatSlice";
 import type { ChatMessage } from "../store/chatSlice";
@@ -9,7 +9,7 @@ export default function ChatView() {
   const messages = useAppSelector((s) => s.chat.messages) as ChatMessage[];
   const typing = useAppSelector((s) => s.chat.typing);
   const authUserId = useAppSelector((s) => s.auth.user?.id);
-  const userId = authUserId ?? getAnonymousUserId();
+  const userId = authUserId ? String(authUserId) : getAnonymousUserId();
   const dispatch = useAppDispatch();
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
