@@ -1,4 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import { logout } from "./authSlice.ts";
 
 export type ChatMsg = { id: string; type: string; content: unknown; sender: "user"|"ai"; ts: number; };
 export interface ChatState { stage: "goals"|"risk"|"portfolio"; messages: ChatMsg[]; typing: boolean; }
@@ -54,6 +55,9 @@ const slice = createSlice({
     setMessages(state, action:PayloadAction<ChatMsg[]>) { state.messages = action.payload; },
     setTyping(state, action:PayloadAction<boolean>) { state.typing = action.payload; },
     resetChat() { return createDefaultState(); }
+  },
+  extraReducers: (builder) => {
+    builder.addCase(logout, () => createDefaultState());
   }
 });
 export const { setStage, pushMessage, setMessages, setTyping, resetChat } = slice.actions;

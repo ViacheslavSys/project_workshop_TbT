@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+﻿import { NavLink } from "react-router-dom";
 import { useSelector } from "react-redux";
 import type { RootState } from "../../store/store";
 
@@ -17,13 +17,18 @@ const NAV_ITEMS = [
 export default function Sidebar({ onNavigate, className }: Props) {
   const { isAuthenticated, user } = useSelector((state: RootState) => state.auth);
 
-  const initials = (user?.full_name || user?.username || "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const displayName = user
+    ? [user.first_name, user.middle_name, user.last_name].filter(Boolean).join(" ")
+    : "";
+
+  const initials =
+    (displayName || user?.username || "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "?";
 
   const items = NAV_ITEMS.filter((item) => {
     if (item.authOnly === null) return true;
@@ -41,7 +46,7 @@ export default function Sidebar({ onNavigate, className }: Props) {
         {isAuthenticated ? (
           <div className="flex items-center gap-2">
             <div className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-xs">
-              {initials || "?"}
+              {initials}
             </div>
           </div>
         ) : null}
