@@ -190,8 +190,11 @@ function PortfolioMiniCard({
     portfolio.time_horizon ??
     "Не указан";
 
+  const ensureFiniteNumber = (value?: number | null) =>
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
+
   const formatMoney = (value?: number | null, digits = 0) =>
-    `${(Number.isFinite(value) ? value : 0).toLocaleString("ru-RU", {
+    `${ensureFiniteNumber(value).toLocaleString("ru-RU", {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     })} ₽`;

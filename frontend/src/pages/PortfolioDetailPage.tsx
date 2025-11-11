@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import type { PortfolioRecommendation } from "../api/chat";
 import { calculatePortfolio, fetchPortfolioAnalysis } from "../api/chat";
@@ -37,8 +38,11 @@ const reportFormulas = [
   },
 ];
 
+const ensureFiniteNumber = (value?: number | null) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
 const formatMoney = (value?: number | null, digits = 0) =>
-  `${(Number.isFinite(value) ? value : 0).toLocaleString("ru-RU", {
+  `${ensureFiniteNumber(value).toLocaleString("ru-RU", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })} ₽`;
@@ -51,6 +55,7 @@ export default function PortfolioDetailPage() {
   const location = useLocation();
   const { user, isAuthenticated } = useAppSelector((state) => state.auth);
   const userId = user?.id ? String(user.id) : null;
+  const canViewFullDetails = Boolean(isAuthenticated && userId);
 
   const locationState = (location.state as LocationState | null) ?? null;
   const initialPortfolio = locationState?.portfolio ?? null;
@@ -63,6 +68,12 @@ export default function PortfolioDetailPage() {
   const [analysis, setAnalysis] = useState<string>("");
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canViewFullDetails) {
+      setLoading(false);
+    }
+  }, [canViewFullDetails]);
 
   const fetchLatestPortfolio = useCallback(async () => {
     if (!userId) return;
@@ -171,10 +182,6 @@ export default function PortfolioDetailPage() {
     });
   }, [portfolio]);
 
-  if (!isAuthenticated || !userId) {
-    return <PortfolioDetailEmptyState />;
-  }
-
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center text-muted">
@@ -207,6 +214,10 @@ export default function PortfolioDetailPage() {
   }
 
   if (!portfolio) {
+    if (!canViewFullDetails) {
+      return <PortfolioDetailEmptyState />;
+    }
+
     return (
       <div className="mx-auto max-w-2xl">
         <div className="card">
@@ -227,6 +238,7 @@ export default function PortfolioDetailPage() {
   }
 
   const horizonYears = (portfolio.investment_term_months ?? 0) / 12 || 0;
+  const sensitiveInfoRestricted = !canViewFullDetails;
 
   return (
     <div className="space-y-6">
@@ -236,10 +248,19 @@ export default function PortfolioDetailPage() {
             Портфель #{params.id ?? "—"}
           </p>
           <h1 className="text-2xl font-semibold">{portfolio.smart_goal}</h1>
-          <p className="text-sm text-muted">
-            Цель: {formatMoney(portfolio.target_amount)} · Горизонт{" "}
-            {horizonYears.toFixed(1)} года · Ожидаемая доходность{" "}
-            {formatPercent(portfolio.expected_portfolio_return)}
+          <p className="text-sm text-muted flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>Цель:</span>
+            <SensitiveValue restricted={sensitiveInfoRestricted}>
+              {formatMoney(portfolio.target_amount)}
+            </SensitiveValue>
+            <span>· Горизонт:</span>
+            <SensitiveValue restricted={sensitiveInfoRestricted}>
+              {`${horizonYears.toFixed(1)} лет`}
+            </SensitiveValue>
+            <span>· Ожидаемая доходность:</span>
+            <SensitiveValue restricted={sensitiveInfoRestricted}>
+              {formatPercent(portfolio.expected_portfolio_return)}
+            </SensitiveValue>
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -261,6 +282,7 @@ export default function PortfolioDetailPage() {
         <SummaryCard
           label="Целевая сумма"
           value={formatMoney(portfolio.target_amount)}
+          restricted={sensitiveInfoRestricted}
         />
         <SummaryCard
           label="Стартовый капитал"
@@ -279,63 +301,71 @@ export default function PortfolioDetailPage() {
         <SummaryCard
           label="Годовая инфляция в модели"
           value={formatPercent(portfolio.annual_inflation_rate)}
+          restricted={sensitiveInfoRestricted}
         />
         <SummaryCard
           label="Горизонт инвестиций"
           value={`${horizonYears.toFixed(1)} года`}
+          restricted={sensitiveInfoRestricted}
         />
         <SummaryCard
           label="Риск-профиль"
           value={portfolio.risk_profile || "—"}
+          restricted={sensitiveInfoRestricted}
         />
         <SummaryCard
           label="Ожидаемая доходность"
           value={formatPercent(portfolio.expected_portfolio_return)}
+          restricted={sensitiveInfoRestricted}
         />
       </section>
 
-      <section className="card">
-        <div className="card-header flex items-center justify-between">
-          <div>
-            <div className="text-lg font-semibold">Разбивка по классам активов</div>
-            <p className="text-sm text-muted">
-              Рекомендованные доли классов активов в итоговом портфеле
-            </p>
-          </div>
-        </div>
-        <div className="card-body flex flex-wrap gap-3">
-          {allocationSummary.length ? (
-            allocationSummary.map((item, index) => (
-              <div
-                key={`${item.assetType}-${index}`}
-                className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
-              >
-                <div className="text-muted">{item.assetType}</div>
-                <div className="text-lg font-semibold">
-                  {formatPercent(item.weight)}
-                </div>
-                <div className="text-xs text-muted">
-                  ≈ {formatMoney(item.amount)}
-                </div>
+      <RestrictedPortfolioDetails restricted={!canViewFullDetails}>
+        <div className="space-y-6">
+          <section className="card">
+            <div className="card-header flex items-center justify-between">
+              <div>
+                <div className="text-lg font-semibold">Разбивка по классам активов</div>
+                <p className="text-sm text-muted">
+                  Рекомендованные доли классов активов в итоговом портфеле
+                </p>
               </div>
-            ))
+            </div>
+            <div className="card-body flex flex-wrap gap-3">
+              {allocationSummary.length ? (
+                allocationSummary.map((item, index) => (
+                  <div
+                    key={`${item.assetType}-${index}`}
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
+                  >
+                    <div className="text-muted">{item.assetType}</div>
+                    <div className="text-lg font-semibold">
+                      {formatPercent(item.weight)}
+                    </div>
+                    <div className="text-xs text-muted">
+                      ≈ {formatMoney(item.amount)}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted">
+                  Нет данных о распределении активов.
+                </p>
+              )}
+            </div>
+          </section>
+
+          {tableRows.length ? (
+            <PortfolioAssetsTable rows={tableRows} title="Рекомендуемые активы к покупке" />
           ) : (
-            <p className="text-sm text-muted">
-              Нет данных о распределении активов.
-            </p>
+            <div className="card">
+              <div className="card-body text-sm text-muted">
+                Список активов отсутствует. Попробуйте пересчитать портфель.
+              </div>
+            </div>
           )}
         </div>
-      </section>
-
-      {tableRows.length ? (
-        <PortfolioAssetsTable rows={tableRows} title="Рекомендуемые активы к покупке" />
-      ) : (
-        <div className="card">
-          <div className="card-body text-sm text-muted">
-            Список активов отсутствует. Попробуйте пересчитать портфель.
-          </div>
-        </div>
-      )}
+      </RestrictedPortfolioDetails>
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -397,11 +427,77 @@ function PortfolioDetailEmptyState() {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({
+  label,
+  value,
+  restricted = false,
+}: {
+  label: string;
+  value: ReactNode;
+  restricted?: boolean;
+}) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
       <div className="text-xs uppercase text-muted">{label}</div>
-      <div className="text-base font-semibold">{value}</div>
+      <div className="text-base font-semibold">
+        <SensitiveValue restricted={restricted}>{value}</SensitiveValue>
+      </div>
     </div>
   );
 }
+
+function SensitiveValue({
+  children,
+  restricted,
+}: {
+  children: ReactNode;
+  restricted: boolean;
+}) {
+  if (!restricted) {
+    return <>{children}</>;
+  }
+
+  return (
+    <span
+      className="blur-sm select-none"
+      aria-label="Доступно после регистрации"
+    >
+      {children}
+    </span>
+  );
+}
+
+function RestrictedPortfolioDetails({
+  children,
+  restricted,
+}: {
+  children: ReactNode;
+  restricted: boolean;
+}) {
+  if (!restricted) {
+    return <>{children}</>;
+  }
+
+  return (
+    <div className="relative">
+      <div
+        className="select-none blur-md pointer-events-none"
+        aria-hidden="true"
+      >
+        {children}
+      </div>
+      <div className="pointer-events-none absolute inset-0 rounded-2xl border border-dashed border-border/70 bg-bg/80 backdrop-blur" />
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-start gap-4 px-6 py-10 text-center">
+        <p className="text-base font-semibold text-text">
+          Структура портфеля (распределение и количество ценных бумаг) доступна только
+          зарегистрированным пользователям.
+        </p>
+        <Link to="/auth" className="btn">
+          Войти, чтобы увидеть структуру
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+
