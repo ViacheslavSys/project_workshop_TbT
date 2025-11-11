@@ -8,6 +8,7 @@ import {
   type LoginPayload,
   type RegisterUserPayload,
 } from "../api/users";
+import { clearCachedUserIdentity } from "../shared/userIdentity";
 import { resetAnonymousUserId } from "../shared/utils/anonymousUser";
 import { loadToken, persistToken } from "./tokenStorage";
 
@@ -50,6 +51,7 @@ function clearSessionScopedData() {
 function flushClientCache() {
   clearSessionScopedData();
   resetAnonymousUserId();
+  clearCachedUserIdentity();
 }
 
 const initialState: AuthState = {

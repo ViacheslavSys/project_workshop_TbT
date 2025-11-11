@@ -15,7 +15,7 @@ import {
   type RiskProfileResult,
   
 } from "../../api/chat";
-import { getAnonymousUserId } from "../../shared/utils/anonymousUser";
+import { getCanonicalUserId } from "../../shared/userIdentity";
 import { type RootState } from "../../store/store";
 import {
   pushMessage,
@@ -234,11 +234,13 @@ export default function ChatWide() {
   const recorderChunksRef = useRef<BlobPart[]>([]);
 
   useEffect(() => {
-    if (authUserId) {
-      userIdRef.current = String(authUserId);
-    } else {
-      userIdRef.current = getAnonymousUserId();
-    }
+    userIdRef.current = getCanonicalUserId(authUserId);
+  }, [authUserId]);
+
+  const resolveUserId = useCallback(() => {
+    const resolved = userIdRef.current || getCanonicalUserId(authUserId);
+    userIdRef.current = resolved;
+    return resolved;
   }, [authUserId]);
 
   useEffect(() => {
@@ -274,8 +276,7 @@ export default function ChatWide() {
   const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
-    const userId = userIdRef.current || getAnonymousUserId();
-    userIdRef.current = userId;
+    const userId = resolveUserId();
 
     setPortfolioExplanation(null);
     setPortfolioExplanationError(null);
@@ -305,8 +306,7 @@ export default function ChatWide() {
     if (portfolioRequestedRef.current) return;
     portfolioRequestedRef.current = true;
 
-    const userId = userIdRef.current || getAnonymousUserId();
-    userIdRef.current = userId;
+    const userId = resolveUserId();
 
     dispatch(setTyping(true));
     setPending(true);
@@ -344,7 +344,7 @@ export default function ChatWide() {
       dispatch(setTyping(false));
       setPending(false);
     }
-  }, [appendMessage, dispatch]);
+  }, [appendMessage, dispatch, resolveUserId]);
 
   const startRecording = async () => {
     if (isRecording) return;
@@ -359,8 +359,7 @@ export default function ChatWide() {
       };
 
       recorder.onstop = async () => {
-        const userId = userIdRef.current || getAnonymousUserId();
-        userIdRef.current = userId;
+        const userId = resolveUserId();
         const rawBlob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
         if (!rawBlob.size) {
           setIsRecording(false);
@@ -491,8 +490,7 @@ export default function ChatWide() {
 
   const handleStartRisk = useCallback(async () => {
     portfolioRequestedRef.current = false;
-    const userId = userIdRef.current || getAnonymousUserId();
-    userIdRef.current = userId;
+    const userId = resolveUserId();
     setError(null);
     setPending(true);
     setPortfolioExplanation(null);
@@ -529,7 +527,7 @@ export default function ChatWide() {
       setPending(false);
     }
 
-  }, [appendMessage, dispatch, enqueueRiskQuestion]);
+  }, [appendMessage, dispatch, enqueueRiskQuestion, resolveUserId]);
 
   useEffect(() => {
     if (stage !== "goals") return;
@@ -559,8 +557,7 @@ export default function ChatWide() {
   //   if (portfolioRequestedRef.current) return;
   //   portfolioRequestedRef.current = true;
 
-  //   const userId = userIdRef.current || getAnonymousUserId();
-  //   userIdRef.current = userId;
+  //   const userId = resolveUserId();
 
   //   dispatch(setTyping(true));
   //   setPending(true);
@@ -590,8 +587,7 @@ export default function ChatWide() {
   // }, [appendMessage, dispatch]);
 
   const finalizeRiskAnswers = async (answers: Record<number, string>) => {
-    const userId = userIdRef.current || getAnonymousUserId();
-    userIdRef.current = userId;
+    const userId = resolveUserId();
     dispatch(setTyping(true));
     setPending(true);
     setError(null);
@@ -623,8 +619,7 @@ export default function ChatWide() {
   };
 
   const finalizeClarifications = async (answers: Record<string, string>) => {
-    const userId = userIdRef.current || getAnonymousUserId();
-    userIdRef.current = userId;
+    const userId = resolveUserId();
 
     dispatch(setTyping(true));
     setPending(true);
