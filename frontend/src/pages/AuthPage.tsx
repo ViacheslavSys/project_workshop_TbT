@@ -256,6 +256,7 @@ export default function AuthPage() {
     () => (isLoginMode ? "Войти" : "Зарегистрироваться"),
     [isLoginMode],
   );
+  const isRegisterSubmitDisabled = loading || !registerForm.agreementAccepted;
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setFormError(null);
@@ -536,8 +537,14 @@ export default function AuthPage() {
                 )}
                 <button
                   type="submit"
-                  className="btn w-full"
-                  disabled={loading || !registerForm.agreementAccepted}
+                  className="btn w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isRegisterSubmitDisabled}
+                  aria-disabled={isRegisterSubmitDisabled}
+                  title={
+                    isRegisterSubmitDisabled
+                      ? "Подтвердите ознакомление с пользовательским соглашением"
+                      : undefined
+                  }
                 >
                   {loading ? "Отправка..." : submitLabel}
                 </button>
