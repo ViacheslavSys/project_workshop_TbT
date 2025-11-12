@@ -77,7 +77,6 @@ export default function Layout({ children }: PropsWithChildren) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h14M3 10h14M3 14h14" />
                 </svg>
               </button>
-              <div className="text-lg font-semibold text-primary">InvestPro</div>
             </div>
             <div className="flex items-center gap-2">
               <button

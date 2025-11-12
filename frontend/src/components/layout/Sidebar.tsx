@@ -1,5 +1,6 @@
 ﻿import { NavLink } from "react-router-dom";
 import { useAppSelector } from "../../app/store/hooks";
+import Logo from "../Logo";
 
 type Props = { onNavigate?: () => void };
 
@@ -34,7 +35,10 @@ export default function Sidebar({ onNavigate }: Props) {
   return (
     <div className="flex h-screen w-64 flex-col border-r border-border bg-surface/90">
       <div className="flex h-16 items-center justify-between border-b border-border px-5">
-        <div className="text-lg font-semibold text-primary">InvestPro</div>
+        <Logo
+          labelClassName="text-lg font-semibold text-primary"
+          imageClassName="h-9 w-9 rounded-full object-cover"
+        />
         {isAuthenticated ? (
           <div className="flex items-center gap-2">
             <div className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-xs">
