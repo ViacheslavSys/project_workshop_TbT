@@ -1,19 +1,48 @@
-:root {
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0a0e1a;
-  --surface: #111627;         /* Основной фон карточек */
-  --panel: #1a1f2e;           /* Панели и модальные окна */
+  --surface: #111627;
+  --panel: #1a1f2e;
   --text: #f1f5f9;
   --muted: #94a3b8;
   --primary: #2563eb;
   --success: #10b981;
   --danger: #ef4444;
-  --border: rgba(255,255,255,.08);
-  --ring: rgba(37,99,235,.45);
+  --border: rgba(255, 255, 255, 0.08);
+  --ring: rgba(37, 99, 235, 0.45);
   --radius: 16px;
-  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --chat-bot-bg: rgba(255, 255, 255, 0.06);
+  --chat-user-bg: rgba(37, 99, 235, 0.15);
+  --chat-input-bg: rgba(0, 0, 0, 0.2);
 }
 
-html, body, #root { height: 100%; }
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --panel: #f1f5f9;
+  --text: #0f172a;
+  --muted: #475569;
+  --primary: #2563eb;
+  --success: #059669;
+  --danger: #dc2626;
+  --border: rgba(15, 23, 42, 0.12);
+  --ring: rgba(37, 99, 235, 0.35);
+  --radius: 16px;
+  --shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+  --chat-bot-bg: rgba(15, 23, 42, 0.05);
+  --chat-user-bg: rgba(37, 99, 235, 0.12);
+  --chat-input-bg: rgba(15, 23, 42, 0.04);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -21,5 +50,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-a { color: inherit; text-decoration: none; }
-* { box-sizing: border-box; }
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
