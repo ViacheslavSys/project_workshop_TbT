@@ -1,47 +1,101 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
+from app.models.portfolio import Portfolio, MonthlyPayment, PortfolioComposition, AssetAllocation
+from app.schemas.portfolio import PortfolioCalculationResponse, PortfolioCreate
 
-from app.models.portfolio import Portfolio
-from app.models.portfolio_asset import PortfolioAsset
-from app.schemas.portfolio import PortfolioCreate
+class PortfolioRepository:
+    def __init__(self, db_session: Session):
+        self.db_session = db_session
 
-
-def get_portfolios(db: Session, user_id: int):
-    return db.query(Portfolio).filter(Portfolio.user_id == user_id).all()
-
-
-def get_portfolio(db: Session, portfolio_id: int):
-    return db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
-
-
-def create_portfolio(
-    db: Session, user_id: int, portfolio_in: PortfolioCreate
-) -> Portfolio:
-    portfolio = Portfolio(
-        user_id=user_id,
-        investment_amount=portfolio_in.investment_amount,
-        risk_profile=portfolio_in.risk_profile,
-        time_horizon=portfolio_in.time_horizon,
-    )
-    db.add(portfolio)
-    db.flush()
-
-    for asset in portfolio_in.assets:
-        pa = PortfolioAsset(
-            portfolio_id=portfolio.id,
-            asset_id=asset.asset_id,
-            weight=asset.weight,
+    def create_portfolio(self, portfolio_data: PortfolioCalculationResponse, user_id: int, portfolio_name: str = "Основной портфель") -> Portfolio:
+        """Создание портфеля в базе данных"""
+        
+        # Создаем основной объект портфеля
+        portfolio = Portfolio(
+            user_id=user_id,
+            portfolio_name=portfolio_name,
+            target_amount=portfolio_data.target_amount,
+            initial_capital=portfolio_data.initial_capital,
+            investment_term_months=portfolio_data.investment_term_months,
+            annual_inflation_rate=portfolio_data.annual_inflation_rate,
+            future_value_with_inflation=portfolio_data.future_value_with_inflation,
+            risk_profile=portfolio_data.recommendation.risk_profile,
+            time_horizon=portfolio_data.recommendation.time_horizon,
+            smart_goal=portfolio_data.recommendation.smart_goal,
+            total_investment=portfolio_data.recommendation.total_investment,
+            expected_portfolio_return=portfolio_data.recommendation.expected_portfolio_return
         )
-        db.add(pa)
+        
+        self.db_session.add(portfolio)
+        self.db_session.flush()  # Получаем ID портфеля
+        
+        # Создаем данные по ежемесячному платежу
+        monthly_payment = MonthlyPayment(
+            portfolio_id=portfolio.id,
+            monthly_payment=portfolio_data.recommendation.monthly_payment_detail.monthly_payment,
+            future_capital=portfolio_data.recommendation.monthly_payment_detail.future_capital,
+            total_months=portfolio_data.recommendation.monthly_payment_detail.total_months,
+            monthly_rate=portfolio_data.recommendation.monthly_payment_detail.monthly_rate,
+            annuity_factor=portfolio_data.recommendation.monthly_payment_detail.annuity_factor
+        )
+        
+        self.db_session.add(monthly_payment)
+        
+        # Создаем композиции портфеля и распределения активов
+        for comp in portfolio_data.recommendation.composition:
+            portfolio_composition = PortfolioComposition(
+                portfolio_id=portfolio.id,
+                asset_type=comp.asset_type,
+                target_weight=comp.target_weight,
+                actual_weight=comp.actual_weight,
+                amount=comp.amount
+            )
+            
+            self.db_session.add(portfolio_composition)
+            self.db_session.flush()  # Получаем ID композиции
+            
+            # Добавляем распределения активов
+            for asset_alloc in comp.assets:
+                # Находим asset_id по тикеру
+                asset = self.db_session.query(Asset).filter(
+                    Asset.ticker == asset_alloc.ticker
+                ).first()
+                
+                if asset:
+                    asset_allocation = AssetAllocation(
+                        portfolio_composition_id=portfolio_composition.id,
+                        asset_id=asset.id,
+                        quantity=asset_alloc.quantity,
+                        target_weight=asset_alloc.weight,
+                        purchase_price=asset_alloc.price
+                    )
+                    self.db_session.add(asset_allocation)
+        
+        self.db_session.commit()
+        return portfolio
 
-    db.commit()
-    db.refresh(portfolio)
-    return portfolio
+    def get_user_portfolios(self, user_id: int) -> list[Portfolio]:
+        """Получение всех портфелей пользователя"""
+        return self.db_session.query(Portfolio).filter(
+            Portfolio.user_id == user_id,
+            Portfolio.is_active == True
+        ).all()
 
+    def get_portfolio_by_id(self, portfolio_id: int, user_id: int) -> Portfolio:
+        """Получение конкретного портфеля пользователя"""
+        return self.db_session.query(Portfolio).filter(
+            and_(
+                Portfolio.id == portfolio_id,
+                Portfolio.user_id == user_id,
+                Portfolio.is_active == True
+            )
+        ).first()
 
-def delete_portfolio(db: Session, portfolio_id: int) -> bool:
-    portfolio = get_portfolio(db, portfolio_id)
-    if not portfolio:
+    def deactivate_portfolio(self, portfolio_id: int, user_id: int) -> bool:
+        """Деактивация портфеля"""
+        portfolio = self.get_portfolio_by_id(portfolio_id, user_id)
+        if portfolio:
+            portfolio.is_active = False
+            self.db_session.commit()
+            return True
         return False
-    db.delete(portfolio)
-    db.commit()
-    return True

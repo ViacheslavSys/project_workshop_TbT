@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 from pydantic import BaseModel
+from datetime import datetime
 
 
 class PortfolioCalculationRequest(BaseModel):
@@ -69,3 +70,23 @@ class PortfolioAnalysisRequest(BaseModel):
 
 class PortfolioAnalysisResponse(BaseModel):
     analysis: str
+
+
+class PortfolioSummary(BaseModel):
+    """Схема для краткой информации о портфеле"""
+    id: int
+    portfolio_name: str
+    target_amount: float
+    initial_capital: float
+    risk_profile: str
+    created_at: datetime
+
+class PortfolioSaveResponse(BaseModel):
+    """Ответ при сохранении портфеля"""
+    message: str
+    portfolio_id: int
+    portfolio_name: str
+
+class PortfolioListResponse(BaseModel):
+    """Ответ со списком портфелей"""
+    portfolios: List[PortfolioSummary]

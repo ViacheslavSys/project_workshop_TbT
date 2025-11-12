@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.redis_cache import cache
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.inflation_repository import InflationRepository
+from app.repositories.portfolio_repository import PortfolioRepository
 from app.schemas.portfolio import (
     AssetAllocation,
     MonthlyPaymentDetail,
@@ -19,6 +20,7 @@ class PortfolioService:
         self.db_session = db_session
         self.inflation_repo = InflationRepository()
         self.asset_repo = AssetRepository()
+        self.portfolio_repo = PortfolioRepository(db_session)
 
     def calculate_future_value_with_inflation(
         self, goal_sum: float, term_months: int
@@ -182,13 +184,12 @@ class PortfolioService:
         all_stocks = self.asset_repo.get_assets_by_type(self.db_session, 'акция')
 
         strategies = {
-            'conservative': ['SBER', 'GAZP', 'LKOH', 'VTBR'],
-            'moderate': ['SBER', 'GAZP', 'LKOH', 'VTBR', 'GMKN', 'ROSN', 'MGNT'],
+            'conservative': ['SBER', 'GAZP', 'LKOH'],
+            'moderate': ['SBER', 'GAZP', 'LKOH', 'GMKN', 'ROSN', 'MGNT'],
             'aggressive': [
                 'SBER',
                 'GAZP',
                 'LKOH',
-                'VTBR',
                 'GMKN',
                 'ROSN',
                 'MGNT',
@@ -475,3 +476,46 @@ class PortfolioService:
         cache.set_json(portfolio_key, portfolio_response.dict(), expire=3600)
 
         return portfolio_response
+    
+    
+    #СОХРАНЕНИЕ В БД
+    def save_portfolio_to_db(self, user_id: str, portfolio_name: str = "Основной портфель") -> dict:
+        """Сохранение портфеля из Redis в базу данных"""
+                
+        portfolio_data_dict = cache.get_json(f"user:{user_id}:portfolio")
+        if not portfolio_data_dict:
+            raise ValueError("Портфель не найден в кэше. Сначала выполните расчет.")
+               
+        portfolio_data = PortfolioCalculationResponse(**portfolio_data_dict)
+                
+        portfolio = self.portfolio_repo.create_portfolio(
+            portfolio_data=portfolio_data,
+            user_id=int(user_id),  
+            portfolio_name=portfolio_name
+        )
+        
+        return {
+            "message": "Портфель успешно сохранен в базу данных",
+            "portfolio_id": portfolio.id,
+            "portfolio_name": portfolio.portfolio_name
+        }
+
+    def get_user_portfolios_from_db(self, user_id: int) -> list:
+        """Получение всех портфелей пользователя из БД"""
+        return self.portfolio_repo.get_user_portfolios(user_id)
+
+
+    def recalculate_portfolio(self, portfolio_id: int, user_id: int) -> dict:
+        """Перерасчет портфеля на основе текущих цен активов """
+        
+        portfolio = self.portfolio_repo.get_portfolio_by_id(portfolio_id, user_id)
+        if not portfolio:
+            raise ValueError("Портфель не найден")
+        
+        # Здесь будет логика перерасчета на основе текущих цен
+        # Пока просто возвращаем информацию о портфеле
+        return {
+            "portfolio_id": portfolio.id,
+            "portfolio_name": portfolio.portfolio_name,
+            "needs_recalculation": self._check_portfolio_needs_update(portfolio)
+        }
