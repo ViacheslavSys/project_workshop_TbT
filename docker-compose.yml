@@ -13,7 +13,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_database:/var/lib/postgresql/data
 
   # Redis
   redis:
@@ -110,4 +110,4 @@ services:
     command: celery -A app.core.celery_app beat --loglevel=info
 
 volumes:
-  postgres_data:
+  postgres_database:

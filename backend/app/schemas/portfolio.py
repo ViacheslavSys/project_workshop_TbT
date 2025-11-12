@@ -1,7 +1,6 @@
 from typing import List, Optional
 
 from pydantic import BaseModel
-from datetime import datetime
 
 
 class PortfolioCalculationRequest(BaseModel):
@@ -35,6 +34,23 @@ class PortfolioComposition(BaseModel):
     assets: List[AssetAllocation]
 
 
+class PlanStep(BaseModel):
+    """Шаг пошагового плана"""
+
+    step_number: int
+    title: str
+    description: str
+    actions: List[str]
+
+
+class StepByStepPlan(BaseModel):
+    """Пошаговый план инвестирования"""
+
+    steps: List[PlanStep]
+    generated_at: str
+    total_steps: int
+
+
 class PortfolioRecommendation(BaseModel):
     target_amount: float
     initial_capital: float
@@ -48,6 +64,7 @@ class PortfolioRecommendation(BaseModel):
     expected_portfolio_return: float
     composition: List[PortfolioComposition]
     monthly_payment_detail: MonthlyPaymentDetail
+    step_by_step_plan: Optional[StepByStepPlan] = None
 
 
 class PortfolioCreate(BaseModel):
@@ -74,19 +91,24 @@ class PortfolioAnalysisResponse(BaseModel):
 
 class PortfolioSummary(BaseModel):
     """Схема для краткой информации о портфеле"""
+
     id: int
     portfolio_name: str
     target_amount: float
     initial_capital: float
     risk_profile: str
-    created_at: datetime
+    created_at: str
+
 
 class PortfolioSaveResponse(BaseModel):
     """Ответ при сохранении портфеля"""
+
     message: str
     portfolio_id: int
     portfolio_name: str
 
+
 class PortfolioListResponse(BaseModel):
     """Ответ со списком портфелей"""
+
     portfolios: List[PortfolioSummary]
