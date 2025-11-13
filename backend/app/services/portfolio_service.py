@@ -16,6 +16,16 @@ from app.schemas.portfolio import (
     PortfolioRecommendation,
     StepByStepPlan,
 )
+from app.models.portfolio import (
+    Portfolio, 
+    MonthlyPayment,  
+    PortfolioComposition, 
+    AssetAllocation,
+    StepByStepPlan, 
+    PlanStep, 
+    StepAction
+)
+from app.models.asset import Asset
 
 
 class PortfolioService:
@@ -500,29 +510,102 @@ class PortfolioService:
 
         return portfolio_response
 
-    # СОХРАНЕНИЕ В БД
-    def save_portfolio_to_db(
-        self, user_id: str, portfolio_name: str = "Основной портфель"
-    ) -> dict:
-        """Сохранение портфеля из Redis в базу данных"""
-
-        portfolio_data_dict = cache.get_json(f"user:{user_id}:portfolio")
-        if not portfolio_data_dict:
-            raise ValueError("Портфель не найден в кэше. Сначала выполните расчет.")
-
-        portfolio_data = PortfolioCalculationResponse(**portfolio_data_dict)
-
-        portfolio = self.portfolio_repo.create_portfolio(
-            portfolio_data=portfolio_data,
-            user_id=int(user_id),
+    
+    def create_portfolio(self, portfolio_data: PortfolioCalculationResponse, user_id: int, portfolio_name: str = "Основной портфель") -> Portfolio:
+        """Создание портфеля в базе данных с пошаговым планом"""
+        
+        # Создаем основной объект портфеля
+        portfolio = Portfolio(
+            user_id=user_id,
             portfolio_name=portfolio_name,
+            target_amount=portfolio_data.target_amount,
+            initial_capital=portfolio_data.initial_capital,
+            investment_term_months=portfolio_data.investment_term_months,
+            annual_inflation_rate=portfolio_data.annual_inflation_rate,
+            future_value_with_inflation=portfolio_data.future_value_with_inflation,
+            risk_profile=portfolio_data.recommendation.risk_profile,
+            time_horizon=portfolio_data.recommendation.time_horizon,
+            smart_goal=portfolio_data.recommendation.smart_goal,
+            total_investment=portfolio_data.recommendation.total_investment,
+            expected_portfolio_return=portfolio_data.recommendation.expected_portfolio_return
         )
-
-        return {
-            "message": "Портфель успешно сохранен в базу данных",
-            "portfolio_id": portfolio.id,
-            "portfolio_name": portfolio.portfolio_name,
-        }
+        
+        self.db_session.add(portfolio)
+        self.db_session.flush()
+        
+        # Создаем monthly_payment (существующая логика)
+        monthly_payment = MonthlyPayment(
+            portfolio_id=portfolio.id,
+            monthly_payment=portfolio_data.recommendation.monthly_payment_detail.monthly_payment,
+            future_capital=portfolio_data.recommendation.monthly_payment_detail.future_capital,
+            total_months=portfolio_data.recommendation.monthly_payment_detail.total_months,
+            monthly_rate=portfolio_data.recommendation.monthly_payment_detail.monthly_rate,
+            annuity_factor=portfolio_data.recommendation.monthly_payment_detail.annuity_factor
+        )
+        self.db_session.add(monthly_payment)
+        
+        # Создаем композиции портфеля (существующая логика)
+        for comp in portfolio_data.recommendation.composition:
+            portfolio_composition = PortfolioComposition(
+                portfolio_id=portfolio.id,
+                asset_type=comp.asset_type,
+                target_weight=comp.target_weight,
+                actual_weight=comp.actual_weight,
+                amount=comp.amount
+            )
+            self.db_session.add(portfolio_composition)
+            self.db_session.flush()
+            
+            # Добавляем распределения активов
+            for asset_alloc in comp.assets:
+                asset = self.db_session.query(Asset).filter(
+                    Asset.ticker == asset_alloc.ticker
+                ).first()
+                
+                if asset:
+                    asset_allocation = AssetAllocation(
+                        portfolio_composition_id=portfolio_composition.id,
+                        asset_id=asset.id,
+                        quantity=asset_alloc.quantity,
+                        target_weight=asset_alloc.weight,
+                        purchase_price=asset_alloc.price
+                    )
+                    self.db_session.add(asset_allocation)
+        
+        # НОВОЕ: Создаем пошаговый план, если он есть в данных
+        if (portfolio_data.recommendation.step_by_step_plan and 
+            portfolio_data.recommendation.step_by_step_plan.steps):
+            
+            step_plan = StepByStepPlan(
+                portfolio_id=portfolio.id,
+                generated_at=portfolio_data.recommendation.step_by_step_plan.generated_at,  # или парсим из данных
+                total_steps=len(portfolio_data.recommendation.step_by_step_plan.steps)
+            )
+            self.db_session.add(step_plan)
+            self.db_session.flush()
+            
+            # Добавляем шаги плана
+            for step_data in portfolio_data.recommendation.step_by_step_plan.steps:
+                plan_step = PlanStep(
+                    step_by_step_plan_id=step_plan.id,
+                    step_number=step_data.step_number,
+                    title=step_data.title,
+                    description=step_data.description
+                )
+                self.db_session.add(plan_step)
+                self.db_session.flush()
+                
+                # Добавляем действия для шага
+                for action_order, action_text in enumerate(step_data.actions, 1):
+                    step_action = StepAction(
+                        plan_step_id=plan_step.id,
+                        action_text=action_text,
+                        action_order=action_order
+                    )
+                    self.db_session.add(step_action)
+        
+        self.db_session.commit()
+        return portfolio
 
     def get_user_portfolios_from_db(self, user_id: int) -> list:
         """Получение всех портфелей пользователя из БД"""

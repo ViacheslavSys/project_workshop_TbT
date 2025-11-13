@@ -1,6 +1,15 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from app.models.portfolio import Portfolio, MonthlyPayment, PortfolioComposition, AssetAllocation
+from app.models.portfolio import (
+    Portfolio, 
+    MonthlyPayment, 
+    PortfolioComposition, 
+    AssetAllocation,
+    StepByStepPlan, 
+    PlanStep, 
+    StepAction
+)
+from app.models.asset import Asset
 from app.schemas.portfolio import PortfolioCalculationResponse, PortfolioCreate
 
 class PortfolioRepository:
@@ -70,6 +79,37 @@ class PortfolioRepository:
                         purchase_price=asset_alloc.price
                     )
                     self.db_session.add(asset_allocation)
+        
+        if portfolio_data.recommendation.step_by_step_plan:
+            step_plan = StepByStepPlan(
+                portfolio_id=portfolio.id,
+                generated_at=portfolio_data.recommendation.step_by_step_plan.generated_at,
+                total_steps=portfolio_data.recommendation.step_by_step_plan.total_steps
+            )
+            
+            self.db_session.add(step_plan)
+            self.db_session.flush()
+            
+            # Добавляем шаги плана
+            for step in portfolio_data.recommendation.step_by_step_plan.steps:
+                plan_step = PlanStep(
+                    step_by_step_plan_id=step_plan.id,
+                    step_number=step.step_number,
+                    title=step.title,
+                    description=step.description
+                )
+                
+                self.db_session.add(plan_step)
+                self.db_session.flush()
+                
+                # Добавляем действия для шага
+                for action_order, action_text in enumerate(step.actions, 1):
+                    step_action = StepAction(
+                        plan_step_id=plan_step.id,
+                        action_text=action_text,
+                        action_order=action_order
+                    )
+                    self.db_session.add(step_action)
         
         self.db_session.commit()
         return portfolio

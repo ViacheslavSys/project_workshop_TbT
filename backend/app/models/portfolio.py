@@ -35,6 +35,7 @@ class Portfolio(Base):
     user = relationship("User", back_populates="portfolios")
     monthly_payment = relationship("MonthlyPayment", back_populates="portfolio", uselist=False, cascade="all, delete-orphan")
     portfolio_compositions = relationship("PortfolioComposition", back_populates="portfolio", cascade="all, delete-orphan")
+    step_by_step_plan = relationship("StepByStepPlan", back_populates="portfolio", uselist=False, cascade="all, delete-orphan")
 
 class MonthlyPayment(Base):
     __tablename__ = "monthly_payments"
@@ -78,4 +79,35 @@ class AssetAllocation(Base):
     asset = relationship("Asset", lazy="joined")
     portfolio_composition = relationship("PortfolioComposition", back_populates="asset_allocations")
 
+class StepByStepPlan(Base):
+    __tablename__ = "step_by_step_plans"
 
+    id = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False, unique=True)
+    generated_at = Column(DateTime, nullable=False)
+    total_steps = Column(Integer, nullable=False)
+    
+    portfolio = relationship("Portfolio", back_populates="step_by_step_plan")
+    plan_steps = relationship("PlanStep", back_populates="step_by_step_plan", cascade="all, delete-orphan")
+
+class PlanStep(Base):
+    __tablename__ = "plan_steps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    step_by_step_plan_id = Column(Integer, ForeignKey("step_by_step_plans.id"), nullable=False)
+    step_number = Column(Integer, nullable=False)
+    title = Column(String(200), nullable=False)
+    description = Column(Text)
+    
+    step_by_step_plan = relationship("StepByStepPlan", back_populates="plan_steps")
+    step_actions = relationship("StepAction", back_populates="plan_step", cascade="all, delete-orphan")
+
+class StepAction(Base):
+    __tablename__ = "step_actions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    plan_step_id = Column(Integer, ForeignKey("plan_steps.id"), nullable=False)
+    action_text = Column(Text, nullable=False)
+    action_order = Column(Integer, nullable=False)  # Порядок действий внутри шага
+    
+    plan_step = relationship("PlanStep", back_populates="step_actions")
