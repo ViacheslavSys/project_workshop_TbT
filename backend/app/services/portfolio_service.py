@@ -22,6 +22,7 @@ from app.schemas.portfolio import (
     PortfolioCalculationResponse,
     PortfolioComposition,
     PortfolioRecommendation,
+    PortfolioSummary,
     StepByStepPlan,
 )
 
@@ -622,7 +623,26 @@ class PortfolioService:
 
     def get_user_portfolios_from_db(self, user_id: int) -> list:
         """Получение всех портфелей пользователя из БД"""
-        return self.portfolio_repo.get_user_portfolios(user_id)
+        portfolios = self.portfolio_repo.get_user_portfolios(user_id)
+
+        portfolio_summaries = []
+        for portfolio in portfolios:
+            portfolio_summaries.append(
+                PortfolioSummary(
+                    id=portfolio.id,
+                    portfolio_name=portfolio.portfolio_name,
+                    target_amount=portfolio.target_amount,
+                    initial_capital=portfolio.initial_capital,
+                    risk_profile=portfolio.risk_profile,
+                    created_at=(
+                        portfolio.created_at.isoformat()
+                        if portfolio.created_at
+                        else None
+                    ),
+                )
+            )
+
+        return portfolio_summaries
 
     def recalculate_portfolio(self, portfolio_id: int, user_id: int) -> dict:
         """Перерасчет портфеля на основе текущих цен активов"""
@@ -775,47 +795,27 @@ class PortfolioService:
         return purchase_plan
 
     def save_portfolio_to_db(
-        self, user_id: str, portfolio_name: str = "Основной портфель"
+        self,
+        session_token: str,  # session_token для Redis
+        user_id: int,  # authenticated user_id из JWT
+        portfolio_name: str = "Основной портфель",
     ) -> dict:
         """Сохранение портфеля из Redis в БД"""
 
-        print(f"🔍 [DEBUG] Начало сохранения портфеля для user_id: {user_id}")
+        print(
+            f"🔍 [DEBUG] Начало сохранения портфеля для session_token: {session_token}, user_id: {user_id}"
+        )
 
         try:
-            # Получаем расчет из Redis
+            # Получаем расчет из Redis по session_token
             print(
-                f"🔍 [DEBUG] Получение данных из Redis для ключа: user:{user_id}:portfolio"
+                f"🔍 [DEBUG] Получение данных из Redis для ключа: user:{session_token}:portfolio"
             )
-            portfolio_data = self.calculate_portfolio(user_id)
+            portfolio_data = self.calculate_portfolio(session_token)
 
-            print("🔍 [DEBUG] Данные из Redis получены успешно")
-            print(f"🔍 [DEBUG] Target amount: {portfolio_data.target_amount}")
-            print(f"🔍 [DEBUG] Initial capital: {portfolio_data.initial_capital}")
-            print(
-                f"🔍 [DEBUG] Рекомендация: {portfolio_data.recommendation is not None}"
-            )
-
-            if portfolio_data.recommendation:
-                print(
-                    f"🔍 [DEBUG] Composition items: {len(portfolio_data.recommendation.composition)}"
-                )
-                print(
-                    f"🔍 [DEBUG] Monthly payment: {portfolio_data.recommendation.monthly_payment_detail.monthly_payment}"
-                )
-
-            # Конвертируем user_id в int (если нужно)
-            try:
-                user_id_int = int(user_id)
-                print(f"🔍 [DEBUG] user_id конвертирован в int: {user_id_int}")
-            except ValueError:
-                print(f"❌ [DEBUG] Ошибка конвертации user_id: {user_id}")
-                raise ValueError("user_id должен быть числовым")
-
-            # Сохраняем в БД
+            # Сохраняем в БД с authenticated user_id
             print("🔍 [DEBUG] Начало сохранения в БД...")
-            portfolio = self.create_portfolio(
-                portfolio_data, user_id_int, portfolio_name
-            )
+            portfolio = self.create_portfolio(portfolio_data, user_id, portfolio_name)
 
             print(f"✅ [DEBUG] Портфель успешно сохранен в БД с ID: {portfolio.id}")
 
@@ -827,7 +827,6 @@ class PortfolioService:
 
         except Exception as e:
             print(f"❌ [DEBUG] Ошибка в save_portfolio_to_db: {str(e)}")
-            print(f"❌ [DEBUG] Тип ошибки: {type(e)}")
             import traceback
 
             print(f"❌ [DEBUG] Traceback: {traceback.format_exc()}")
@@ -924,3 +923,15 @@ class PortfolioService:
             future_value_with_inflation=portfolio.future_value_with_inflation,
             recommendation=recommendation,
         )
+
+    def get_portfolio_for_analysis(
+        self, portfolio_id: int, user_id: int
+    ) -> PortfolioCalculationResponse:
+        """Получение портфеля для анализа с проверкой прав доступа"""
+
+        portfolio = self.portfolio_repo.get_portfolio_by_id(portfolio_id, user_id)
+
+        if not portfolio:
+            raise ValueError(f"Портфель {portfolio_id} не найден или нет доступа")
+
+        return self.convert_db_to_response(portfolio)

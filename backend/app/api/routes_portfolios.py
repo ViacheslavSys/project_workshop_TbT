@@ -1,14 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.dependencies import get_current_user, get_db
+from app.models.user import User
 from app.schemas.portfolio import (
     PortfolioAnalysisRequest,
     PortfolioAnalysisResponse,
     PortfolioCalculationRequest,
     PortfolioCalculationResponse,
-    PortfolioCreate,
     PortfolioListResponse,
+    PortfolioSaveRequest,
     PortfolioSaveResponse,
     PortfolioSummary,
 )
@@ -16,14 +17,6 @@ from app.services.portfolio_analysis_service import PortfolioAnalysisService
 from app.services.portfolio_service import PortfolioService
 
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.post("/calculate", response_model=PortfolioCalculationResponse)
@@ -44,48 +37,35 @@ async def calculate_portfolio(
         raise HTTPException(status_code=500, detail=f"Ошибка при расчете: {str(e)}")
 
 
-# @router.post("/create")
-# async def create_portfolio(
-#     portfolio_in: PortfolioCreate, db: Session = Depends(get_db)
-# ):
-#     """
-#     Сохранение портфеля в базе данных
-#     """
-#     try:
-#         portfolio_service = PortfolioService(db)
-
-#         # Получаем расчет портфеля
-#         calculation = portfolio_service.calculate_portfolio(portfolio_in.user_id)
-
-#         # Здесь можно добавить логику сохранения в БД
-#         # using your existing repository functions
-
-#         return {
-#             "message": "Портфель успешно создан",
-#             "portfolio_id": "generated_id",  # Замените на реальный ID
-#             "calculation": calculation,
-#         }
-
-#     except ValueError as e:
-#         raise HTTPException(status_code=400, detail=str(e))
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=500, detail=f"Ошибка при создании портфеля: {str(e)}"
-#         )
-
-
 @router.post("/analyze", response_model=PortfolioAnalysisResponse)
-async def analyze_user_portfolio(request: PortfolioAnalysisRequest):
+async def analyze_user_portfolio(
+    request: PortfolioAnalysisRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Анализирует портфель пользователя через LLM"""
-    service = PortfolioAnalysisService()
+    try:
+        service = PortfolioAnalysisService()
 
-    analysis_result = service.analyze_portfolio(request.user_id)
-    return PortfolioAnalysisResponse(analysis=analysis_result)
+        analysis_result = service.analyze_portfolio(
+            user_id=current_user.id, portfolio_id=request.portfolio_id, db_session=db
+        )
+
+        return PortfolioAnalysisResponse(analysis=analysis_result)
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка при анализе портфеля: {str(e)}"
+        )
 
 
 @router.post("/save-to-db", response_model=PortfolioSaveResponse)
 async def save_portfolio_to_db(
-    portfolio_in: PortfolioCreate, db: Session = Depends(get_db)
+    request: PortfolioSaveRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Сохранение рассчитанного портфеля из Redis в базу данных
@@ -93,10 +73,12 @@ async def save_portfolio_to_db(
     try:
         portfolio_service = PortfolioService(db)
 
-        user_id_int = int(portfolio_in.user_id)
+        user_id_int = int(request.user_id)
 
         result = portfolio_service.save_portfolio_to_db(
-            user_id=user_id_int, portfolio_name=portfolio_in.portfolio_name
+            session_token=user_id_int,  # session_token из Redis
+            user_id=current_user.id,  # authenticated user_id из JWT
+            portfolio_name=request.portfolio_name,
         )
 
         return PortfolioSaveResponse(**result)
@@ -109,14 +91,16 @@ async def save_portfolio_to_db(
         )
 
 
-@router.get("/user/{user_id}", response_model=PortfolioListResponse)
-async def get_user_portfolios(user_id: int, db: Session = Depends(get_db)):
+@router.get("/user", response_model=PortfolioListResponse)
+async def get_user_portfolios(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """
     Получение списка всех портфелей пользователя (только основные данные)
     """
     try:
         portfolio_service = PortfolioService(db)
-        portfolios = portfolio_service.get_user_portfolios_from_db(user_id)
+        portfolios = portfolio_service.get_user_portfolios_from_db(current_user.id)
 
         # Преобразуем в список PortfolioSummary
         portfolio_summaries = []
@@ -143,10 +127,8 @@ async def get_user_portfolios(user_id: int, db: Session = Depends(get_db)):
 @router.get("/{portfolio_id}", response_model=PortfolioCalculationResponse)
 async def get_portfolio_detail(
     portfolio_id: int,
-    user_id: int = Query(
-        ..., description="ID пользователя"
-    ),  # передаем как query parameter
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Получение детальной информации о конкретном портфеле
@@ -155,7 +137,7 @@ async def get_portfolio_detail(
         portfolio_service = PortfolioService(db)
 
         portfolio = portfolio_service.portfolio_repo.get_portfolio_by_id(
-            portfolio_id, user_id
+            portfolio_id, current_user.id
         )
 
         if not portfolio:

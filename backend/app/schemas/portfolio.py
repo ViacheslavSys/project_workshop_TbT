@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
@@ -82,7 +83,7 @@ class PortfolioCalculationResponse(BaseModel):
 
 
 class PortfolioAnalysisRequest(BaseModel):
-    user_id: str
+    portfolio_id: str
 
 
 class PortfolioAnalysisResponse(BaseModel):
@@ -97,7 +98,10 @@ class PortfolioSummary(BaseModel):
     target_amount: float
     initial_capital: float
     risk_profile: str
-    created_at: str
+    created_at: datetime  # ← Измените на datetime
+
+    class Config:
+        from_attributes = True
 
 
 class PortfolioSaveResponse(BaseModel):
@@ -112,3 +116,8 @@ class PortfolioListResponse(BaseModel):
     """Ответ со списком портфелей"""
 
     portfolios: List[PortfolioSummary]
+
+
+class PortfolioSaveRequest(BaseModel):
+    user_id: str  # session_token для Redis
+    portfolio_name: str
