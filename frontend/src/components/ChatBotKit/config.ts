@@ -4,7 +4,7 @@
 import { createChatBotMessage } from "react-chatbot-kit";
 
 const config = {
-  botName: "InvestPro Assistant",
+  botName: "TBT.AI Assistant",
   initialMessages: [createChatBotMessage("Hi! How can I help you today?", {})],
   customStyles: {
     botMessageBox: { backgroundColor: "#1f2937" },

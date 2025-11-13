@@ -74,7 +74,7 @@ export default function Sidebar({ onNavigate, className }: Props) {
       </nav>
 
       <div className="mt-auto border-t border-border p-4 text-xs text-muted">
-        {"\u00A9"} {new Date().getFullYear()} InvestPro
+        {"\u00A9"} {new Date().getFullYear()} TBT.AI
       </div>
     </div>
   );

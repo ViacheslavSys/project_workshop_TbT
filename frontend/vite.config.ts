@@ -10,6 +10,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: ["typographic-blithesomely-leanna.ngrok-free.dev"],
     proxy: {
       "/api": {
         target: "http://backend:8000",

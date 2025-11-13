@@ -23,7 +23,7 @@ export default function Logo({
         loading="lazy"
         className={imageClassName}
       />
-      {showLabel ? <span className={labelClassName}>InvestPro</span> : null}
+      {showLabel ? <span className={labelClassName}>TBT.AI</span> : null}
     </div>
   );
 }

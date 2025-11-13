@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 export type ThemeOption = "light" | "dark";
 
-const STORAGE_KEY = "investpro-theme";
+const STORAGE_KEY = "tbtai-theme";
 
 const getPreferredTheme = (): ThemeOption => {
   if (typeof window === "undefined") {
