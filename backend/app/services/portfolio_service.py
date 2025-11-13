@@ -661,22 +661,46 @@ class PortfolioService:
     def generate_step_by_step_plan(
         self, recommendation: PortfolioRecommendation, initial_capital: float
     ) -> StepByStepPlan:
-        """
-        Генерация пошагового плана инвестирования
-        """
         steps = []
         monthly_payment = recommendation.monthly_payment_detail.monthly_payment
 
         # 1. ШАГ 0: Первоначальные покупки на стартовый капитал
         if initial_capital > 0:
+            # ✅ ПЕРЕСЧИТЫВАЕМ активы на реальный стартовый капитал
+            total_future_value = sum(comp.amount for comp in recommendation.composition)
             initial_actions = []
+
             for composition in recommendation.composition:
-                for asset in composition.assets:
-                    if asset.amount > 0:
-                        initial_actions.append(
-                            f"Купить {asset.quantity} шт. {asset.ticker} ({asset.name}) "
-                            f"по {asset.price:.0f} ₽ за {asset.amount:.0f} ₽"
-                        )
+                # Определяем долю этого типа в общем портфеле
+                if total_future_value > 0:
+                    type_share = composition.amount / total_future_value
+                else:
+                    type_share = composition.target_weight
+
+                # Выделяем бюджет на этот тип активов
+                type_budget = initial_capital * type_share
+
+                # Распределяем бюджет между активами этого типа
+                if composition.assets:
+                    total_assets_weight = sum(
+                        asset.weight for asset in composition.assets
+                    )
+                    for asset in composition.assets:
+                        if total_assets_weight > 0:
+                            asset_budget = type_budget * (
+                                asset.weight / total_assets_weight
+                            )
+                            quantity = (
+                                int(asset_budget / asset.price)
+                                if asset.price > 0
+                                else 0
+                            )
+                            if quantity > 0:
+                                amount = quantity * asset.price
+                                initial_actions.append(
+                                    f"Купить {quantity} шт. {asset.ticker} ({asset.name}) "
+                                    f"по {asset.price:.0f} ₽ за {amount:.0f} ₽"
+                                )
 
             steps.append(
                 PlanStep(
@@ -687,7 +711,7 @@ class PortfolioService:
                 )
             )
 
-        # 2. ШАГ 1: Регулярные инвестиции
+        # 2. ШАГ 1: Регулярные инвестиции (оставляем как было)
         if monthly_payment > 0:
             allocation_actions = []
             for composition in recommendation.composition:
@@ -707,7 +731,7 @@ class PortfolioService:
                 )
             )
 
-            # 3. ШАГ 2: План покупок по месяцам
+            # 3. ШАГ 2: План покупок по месяцам (оставляем как было)
             purchase_plan = self._generate_purchase_plan(
                 recommendation, monthly_payment
             )
@@ -720,7 +744,7 @@ class PortfolioService:
                 )
             )
 
-        # 4. ШАГ 3: Контроль и корректировка
+        # 4. ШАГ 3: Контроль и корректировка (оставляем как было)
         steps.append(
             PlanStep(
                 step_number=len(steps),
@@ -743,54 +767,76 @@ class PortfolioService:
         self, recommendation: PortfolioRecommendation, monthly_payment: float
     ) -> List[str]:
         """
-        Генерация плана покупок по месяцам
+        тратим ВЕСЬ бюджет месяца
         """
         purchase_plan = []
 
-        # Собираем информацию об активах и их ценах
-        asset_info = []
+        # Собираем все активы с их месячными бюджетами
+        all_assets = []
         for composition in recommendation.composition:
             monthly_budget = monthly_payment * composition.target_weight
-            for asset in composition.assets:
-                if asset.price > 0:
-                    asset_info.append(
-                        {
-                            'name': f"{asset.ticker} ({asset.name})",
-                            'price': asset.price,
-                            'monthly_budget': monthly_budget / len(composition.assets),
-                            'type': composition.asset_type,
-                        }
-                    )
+            if composition.assets:
+                # Распределяем бюджет между активами этого типа
+                total_assets_weight = sum(asset.weight for asset in composition.assets)
+                for asset in composition.assets:
+                    if total_assets_weight > 0:
+                        asset_monthly_budget = monthly_budget * (
+                            asset.weight / total_assets_weight
+                        )
+                        all_assets.append(
+                            {
+                                'name': f"{asset.ticker} ({asset.name})",
+                                'price': asset.price,
+                                'monthly_budget': asset_monthly_budget,
+                            }
+                        )
 
         # Сортируем по цене (от дешевых к дорогим)
-        asset_info.sort(key=lambda x: x['price'])
+        all_assets.sort(key=lambda x: x['price'])
 
-        # Генерируем план на 6 месяцев
-        accumulated = {asset['name']: 0 for asset in asset_info}
+        # Накопленные средства по каждому активу
+        accumulated = {asset['name']: 0 for asset in all_assets}
 
         for month in range(1, 7):
-            month_actions = []
-            for asset in asset_info:
+            month_budget = monthly_payment
+            month_purchases = []
+            month_spent = 0
+
+            # РАСПРЕДЕЛЯЕМ БЮДЖЕТ МЕСЯЦА
+            for asset in all_assets:
                 asset_name = asset['name']
                 asset_price = asset['price']
-                monthly_budget = asset['monthly_budget']
 
-                # Добавляем месячный бюджет
-                accumulated[asset_name] += monthly_budget
+                # Добавляем месячный бюджет к накоплениям
+                accumulated[asset_name] += asset['monthly_budget']
 
-                # Проверяем возможность покупки
+                # Покупаем то, что можем
                 if accumulated[asset_name] >= asset_price:
                     can_buy = int(accumulated[asset_name] // asset_price)
                     if can_buy > 0:
-                        cost = can_buy * asset_price
-                        accumulated[asset_name] -= cost
-                        month_actions.append(
-                            f"Месяц {month}: Купить {can_buy} шт. {asset_name} "
-                            f"по {asset_price:.0f} ₽ за {cost:.0f} ₽"
+                        # Покупаем столько, сколько влезает в бюджет
+                        max_affordable = int(
+                            (month_budget - month_spent) // asset_price
                         )
+                        actual_buy = min(can_buy, max_affordable)
 
-            # Добавляем не более 2 покупок в месяц
-            purchase_plan.extend(month_actions[:2])
+                        if actual_buy > 0:
+                            cost = actual_buy * asset_price
+                            if month_spent + cost <= month_budget:
+                                accumulated[asset_name] -= cost
+                                month_spent += cost
+                                month_purchases.append(
+                                    f"Купить {actual_buy} шт. {asset_name} за {cost:.0f} ₽"
+                                )
+
+            # Форматируем вывод
+            if month_purchases:
+                purchases_str = " + ".join(month_purchases)
+                purchase_plan.append(
+                    f"Месяц {month}: {purchases_str} = {month_spent:.0f} ₽"
+                )
+            else:
+                purchase_plan.append(f"Месяц {month}: Накопить {month_budget:.0f} ₽")
 
         return purchase_plan
 
