@@ -12,6 +12,7 @@ email-validator
 passlib[bcrypt]
 
 redis>=5.0.0
+python-jose[cryptography]==3.3.0
 
 openai-whisper==20250625
 torch==2.8.0
@@ -33,4 +34,3 @@ celery
 bs4
 
 bcrypt
-python-jose[cryptography]==3.3.0
