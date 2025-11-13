@@ -45,3 +45,8 @@ def get_current_user(
         raise credentials_exception
 
     return user
+
+
+def get_session_token(request: dict):
+    """Извлекает session_token из тела запроса (для обратной совместимости)"""
+    return request.get("user_id")

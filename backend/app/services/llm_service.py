@@ -1,8 +1,9 @@
 import json
 import os
+import time
 
 import dotenv
-from openai import OpenAI
+from openai import OpenAI, APIError
 
 from app.core.redis_cache import cache
 from app.schemas.chat import Message
@@ -10,13 +11,43 @@ from app.schemas.risk_profile import LLMGoalData
 
 dotenv.load_dotenv()
 
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=f"{os.environ.get('OPENROUTER_API_KEY')}",
-)
+# Получаем все API ключи из .env
+def _get_api_keys():
+    """Получает все API ключи из .env"""
+    keys = []
+    i = 1
+    while True:
+        key_name = f"OPENROUTER_API_KEY_{i}" if i > 1 else "OPENROUTER_API_KEY"
+        key_value = os.environ.get(key_name)
+        if key_value:
+            keys.append(key_value)
+            i += 1
+        else:
+            break
+    return keys
+
+API_KEYS = _get_api_keys()
+current_key_index = 0
+
+def _get_client():
+    """Создает клиент с текущим API ключом"""
+    global current_key_index
+    if not API_KEYS:
+        raise ValueError("No API keys available")
+    
+    current_key = API_KEYS[current_key_index]
+    return OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=current_key,
+    )
+
+def _switch_to_next_key():
+    """Переключается на следующий API ключ"""
+    global current_key_index
+    current_key_index = (current_key_index + 1) % len(API_KEYS)
+    print(f"Switched to API key index: {current_key_index + 1}")
 
 MODEL = os.getenv("MODEL")
-
 
 def _extract_json_from_text(text: str) -> tuple[str, str | None]:
     """
@@ -51,38 +82,61 @@ def send_to_llm(user_id: str, user_message: str) -> str:
 
     messages = [m.model_dump() for m in get_conversation(user_id)]
 
-    completion = client.chat.completions.create(
-        model=MODEL,
-        messages=messages,
-        extra_body={
-            "reasoning": {"exclude": True},
-        },
-    )
+    max_retries = len(API_KEYS)
+    
+    for attempt in range(max_retries):
+        try:
+            client = _get_client()
+            completion = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                extra_body={
+                    "reasoning": {"exclude": True},
+                },
+            )
 
-    response = completion.choices[0].message.content
+            response = completion.choices[0].message.content
 
-    if not response:
-        return ""
+            if not response:
+                return ""
 
-    if response.startswith('\n'):
-        response = response.lstrip('\n')
+            if response.startswith('\n'):
+                response = response.lstrip('\n')
 
-    response = response.lstrip()
+            response = response.lstrip()
 
-    # Извлекаем JSON и оставляем только текстовую часть для ответа пользователю
-    cleaned_response, json_data = _extract_json_from_text(response)
+            # Извлекаем JSON и оставляем только текстовую часть для ответа пользователю
+            cleaned_response, json_data = _extract_json_from_text(response)
 
-    # Если нашли JSON, сохраняем его отдельно (если нужно)
-    if json_data:
-        print(f"Найден JSON в ответе: {json_data}")  # Для отладки
-        # Здесь можно сохранить JSON в кэш или базу, если нужно
+            # Если нашли JSON, сохраняем его отдельно (если нужно)
+            if json_data:
+                print(f"Найден JSON в ответе: {json_data}")  # Для отладки
+                # Здесь можно сохранить JSON в кэш или базу, если нужно
 
-    # На фронт отправляем только очищенный текст
-    final_response = cleaned_response if cleaned_response else response
+            # На фронт отправляем только очищенный текст
+            final_response = cleaned_response if cleaned_response else response
 
-    add_message(user_id, "assistant", final_response)
+            add_message(user_id, "assistant", final_response)
 
-    return final_response
+            return final_response
+
+        except APIError as e:
+            if e.status == 429:  # Rate limit exceeded
+                print(f"Rate limit exceeded (429) on attempt {attempt + 1}. Switching API key...")
+                
+                if attempt < max_retries - 1:
+                    _switch_to_next_key()
+                    time.sleep(2 * (attempt + 1))  # Увеличиваем задержку с каждой попыткой
+                else:
+                    raise Exception(f"All {max_retries} API keys exhausted with rate limits")
+            else:
+                # Для других ошибок просто пробрасываем исключение
+                raise e
+        except Exception as e:
+            # Для других исключений просто пробрасываем
+            raise e
+    
+    raise Exception(f"Failed after {max_retries} attempts")
 
 
 def parse_llm_goal_response(llm_response: str):
