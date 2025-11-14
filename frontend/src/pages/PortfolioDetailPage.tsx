@@ -53,6 +53,23 @@ const formatMoney = (value?: number | null, digits = 0) =>
 const formatPercent = (value?: number | null, digits = 1) =>
   `${((value ?? 0) * 100).toFixed(digits)}%`;
 
+const formatDateTime = (value?: string | null) => {
+  if (!value) {
+    return "";
+  }
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
+    return "";
+  }
+  return new Date(timestamp).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 export default function PortfolioDetailPage() {
   const params = useParams<{ id: string }>();
   const location = useLocation();
@@ -191,6 +208,18 @@ export default function PortfolioDetailPage() {
           (asset.weight ?? block.target_weight ?? 0) * totalAmount,
       }));
     });
+  }, [portfolio]);
+
+  const planSteps = useMemo(() => {
+    const steps = portfolio?.step_by_step_plan?.steps;
+    return Array.isArray(steps) ? steps : [];
+  }, [portfolio]);
+
+  const planGeneratedAt = useMemo(() => {
+    if (!portfolio?.step_by_step_plan?.generated_at) {
+      return "";
+    }
+    return formatDateTime(portfolio.step_by_step_plan.generated_at);
   }, [portfolio]);
 
   if (loading) {
@@ -375,6 +404,56 @@ export default function PortfolioDetailPage() {
               </div>
             </div>
           )}
+          {planSteps.length ? (
+            <section className="card space-y-4">
+              <div className="card-header flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-lg font-semibold">Пошаговый инвестиционный план</div>
+                  <p className="text-sm text-muted">
+                    Подсказывает, как распределять ежемесячный взнос {formatMoney(portfolio.monthly_payment_detail?.monthly_payment)} и выполнять покупки по плану.
+                  </p>
+                </div>
+                {planGeneratedAt ? (
+                  <div className="text-xs text-muted">Сформирован {planGeneratedAt}</div>
+                ) : null}
+              </div>
+              <div className="card-body space-y-4">
+                {planSteps.map((step, index) => {
+                  const actions = Array.isArray(step.actions) ? step.actions : [];
+                  const displayNumber = Number.isFinite(step.step_number)
+                    ? step.step_number + 1
+                    : index + 1;
+
+                  return (
+                    <article
+                      key={`plan-step-${step.step_number}-${index}`}
+                      className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <div className="text-xs uppercase text-muted">Шаг {displayNumber}</div>
+                        <div className="text-sm font-semibold">{step.title}</div>
+                      </div>
+                      {step.description ? (
+                        <p className="text-sm text-muted">{step.description}</p>
+                      ) : null}
+                      {actions.length ? (
+                        <ul className="list-disc space-y-1 pl-5 text-sm text-text">
+                          {actions.map((action, actionIndex) => (
+                            <li
+                              key={`plan-step-${step.step_number}-${actionIndex}`}
+                              className="text-muted"
+                            >
+                              {action}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
         </div>
       </RestrictedPortfolioDetails>
 
