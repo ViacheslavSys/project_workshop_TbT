@@ -11,6 +11,7 @@ from app.schemas.risk_profile import LLMGoalData
 
 dotenv.load_dotenv()
 
+
 # Получаем все API ключи из .env
 def _get_api_keys():
     """Получает все API ключи из .env"""
@@ -26,20 +27,22 @@ def _get_api_keys():
             break
     return keys
 
+
 API_KEYS = _get_api_keys()
 current_key_index = 0
 
+
 def _get_client():
     """Создает клиент с текущим API ключом"""
-    global current_key_index
     if not API_KEYS:
         raise ValueError("No API keys available")
-    
+
     current_key = API_KEYS[current_key_index]
     return OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=current_key,
     )
+
 
 def _switch_to_next_key():
     """Переключается на следующий API ключ"""
@@ -47,7 +50,9 @@ def _switch_to_next_key():
     current_key_index = (current_key_index + 1) % len(API_KEYS)
     print(f"Switched to API key index: {current_key_index + 1}")
 
+
 MODEL = os.getenv("MODEL")
+
 
 def _extract_json_from_text(text: str) -> tuple[str, str | None]:
     """
@@ -63,12 +68,13 @@ def _extract_json_from_text(text: str) -> tuple[str, str | None]:
         end_idx = text.rfind('}')
 
         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-            json_str = text[start_idx: end_idx + 1]
+            end_position = end_idx + 1
+            json_str = text[start_idx:end_position]
             # Проверяем, что это валидный JSON
             json.loads(json_str)  # Если не валиден, выбросит исключение
             json_data = json_str
             # Удаляем JSON из текста
-            cleaned_text = text[:start_idx] + text[end_idx + 1:]
+            cleaned_text = text[:start_idx] + text[end_position:]
             # Очищаем текст
             cleaned_text = cleaned_text.strip()
     except Exception as e:
@@ -83,7 +89,7 @@ def send_to_llm(user_id: str, user_message: str) -> str:
     messages = [m.model_dump() for m in get_conversation(user_id)]
 
     max_retries = len(API_KEYS)
-    
+
     for attempt in range(max_retries):
         try:
             client = _get_client()
@@ -122,20 +128,27 @@ def send_to_llm(user_id: str, user_message: str) -> str:
 
         except APIError as e:
             if e.status == 429:  # Rate limit exceeded
-                print(f"Rate limit exceeded (429) on attempt {attempt + 1}. Switching API key...")
-                
+                print(
+                    "Rate limit exceeded (429) on attempt "
+                    f"{attempt + 1}. Switching API key..."
+                )
+
                 if attempt < max_retries - 1:
                     _switch_to_next_key()
-                    time.sleep(2 * (attempt + 1))  # Увеличиваем задержку с каждой попыткой
+                    time.sleep(
+                        2 * (attempt + 1)
+                    )  # Увеличиваем задержку с каждой попыткой
                 else:
-                    raise Exception(f"All {max_retries} API keys exhausted with rate limits")
+                    raise Exception(
+                        f"All {max_retries} API keys exhausted with rate limits"
+                    )
             else:
                 # Для других ошибок просто пробрасываем исключение
                 raise e
         except Exception as e:
             # Для других исключений просто пробрасываем
             raise e
-    
+
     raise Exception(f"Failed after {max_retries} attempts")
 
 

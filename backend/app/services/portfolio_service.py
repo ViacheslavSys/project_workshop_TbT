@@ -530,7 +530,9 @@ class PortfolioService:
             time_horizon=portfolio_data.recommendation.time_horizon,
             smart_goal=portfolio_data.recommendation.smart_goal,
             total_investment=portfolio_data.recommendation.total_investment,
-            expected_portfolio_return=portfolio_data.recommendation.expected_portfolio_return,
+            expected_portfolio_return=(
+                portfolio_data.recommendation.expected_portfolio_return
+            ),
         )
 
         self.db_session.add(portfolio)
@@ -539,11 +541,21 @@ class PortfolioService:
         # Создаем monthly_payment
         monthly_payment = MonthlyPayment(
             portfolio_id=portfolio.id,
-            monthly_payment=portfolio_data.recommendation.monthly_payment_detail.monthly_payment,
-            future_capital=portfolio_data.recommendation.monthly_payment_detail.future_capital,
-            total_months=portfolio_data.recommendation.monthly_payment_detail.total_months,
-            monthly_rate=portfolio_data.recommendation.monthly_payment_detail.monthly_rate,
-            annuity_factor=portfolio_data.recommendation.monthly_payment_detail.annuity_factor,
+            monthly_payment=(
+                portfolio_data.recommendation.monthly_payment_detail.monthly_payment
+            ),
+            future_capital=(
+                portfolio_data.recommendation.monthly_payment_detail.future_capital
+            ),
+            total_months=(
+                portfolio_data.recommendation.monthly_payment_detail.total_months
+            ),
+            monthly_rate=(
+                portfolio_data.recommendation.monthly_payment_detail.monthly_rate
+            ),
+            annuity_factor=(
+                portfolio_data.recommendation.monthly_payment_detail.annuity_factor
+            ),
         )
         self.db_session.add(monthly_payment)
 
@@ -698,7 +710,8 @@ class PortfolioService:
                             if quantity > 0:
                                 amount = quantity * asset.price
                                 initial_actions.append(
-                                    f"Купить {quantity} шт. {asset.ticker} ({asset.name}) "
+                                    f"Купить {quantity} шт. "
+                                    f"{asset.ticker} ({asset.name}) "
                                     f"по {asset.price:.0f} ₽ за {amount:.0f} ₽"
                                 )
 
@@ -706,7 +719,10 @@ class PortfolioService:
                 PlanStep(
                     step_number=0,
                     title="ПЕРВОНАЧАЛЬНЫЕ ИНВЕСТИЦИИ",
-                    description=f"Инвестируйте ваш стартовый капитал {initial_capital:.0f} ₽:",
+                    description=(
+                        "Инвестируйте ваш стартовый капитал "
+                        f"{initial_capital:.0f} ₽:"
+                    ),
                     actions=initial_actions,
                 )
             )
@@ -718,7 +734,8 @@ class PortfolioService:
                 monthly_budget = monthly_payment * composition.target_weight
                 if monthly_budget > 0:
                     allocation_actions.append(
-                        f"{composition.asset_type.capitalize()}: {monthly_budget:.0f} ₽ "
+                        f"{composition.asset_type.capitalize()}: "
+                        f"{monthly_budget:.0f} ₽ "
                         f"({composition.target_weight * 100:.0f}%)"
                     )
 
@@ -739,7 +756,9 @@ class PortfolioService:
                 PlanStep(
                     step_number=len(steps),
                     title="ПЛАН ПОКУПОК ПО МЕСЯЦАМ",
-                    description="Рациональная последовательность (сначала доступные активы):",
+                    description=(
+                        "Рациональная последовательность " "(сначала доступные активы):"
+                    ),
                     actions=purchase_plan,
                 )
             )
@@ -754,7 +773,10 @@ class PortfolioService:
                     "Раз в месяц проверяйте актуальные цены",
                     "Раз в 6 месяцев rebalance портфель",
                     "При изменении риск-профиля пересмотрите стратегию",
-                    f"Достигнув цели {recommendation.target_amount:.0f} ₽ - поздравляем!",
+                    (
+                        f"Достигнув цели {recommendation.target_amount:.0f} ₽ "
+                        "- поздравляем!"
+                    ),
                 ],
             )
         )
@@ -826,7 +848,8 @@ class PortfolioService:
                                 accumulated[asset_name] -= cost
                                 month_spent += cost
                                 month_purchases.append(
-                                    f"Купить {actual_buy} шт. {asset_name} за {cost:.0f} ₽"
+                                    f"Купить {actual_buy} шт. "
+                                    f"{asset_name} за {cost:.0f} ₽"
                                 )
 
             # Форматируем вывод
@@ -849,13 +872,15 @@ class PortfolioService:
         """Сохранение портфеля из Redis в БД"""
 
         print(
-            f"🔍 [DEBUG] Начало сохранения портфеля для session_token: {session_token}, user_id: {user_id}"
+            "🔍 [DEBUG] Начало сохранения портфеля для session_token: "
+            f"{session_token}, user_id: {user_id}"
         )
 
         try:
             # Получаем расчет из Redis по session_token
             print(
-                f"🔍 [DEBUG] Получение данных из Redis для ключа: user:{session_token}:portfolio"
+                "🔍 [DEBUG] Получение данных из Redis для ключа: "
+                f"user:{session_token}:portfolio"
             )
             portfolio_data = self.calculate_portfolio(session_token)
 
