@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import dotenv
 from openai import OpenAI
@@ -10,10 +11,45 @@ from app.schemas.risk_profile import LLMGoalData
 
 dotenv.load_dotenv()
 
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=f"{os.environ.get('OPENROUTER_API_KEY')}",
-)
+
+# Получаем все API ключи из .env
+def _get_api_keys():
+    """Получает все API ключи из .env"""
+    keys = []
+    i = 1
+    while True:
+        key_name = f"OPENROUTER_API_KEY_{i}" if i > 1 else "OPENROUTER_API_KEY"
+        key_value = os.environ.get(key_name)
+        if key_value:
+            keys.append(key_value)
+            i += 1
+        else:
+            break
+    return keys
+
+
+API_KEYS = _get_api_keys()
+current_key_index = 0
+
+
+def _get_client():
+    """Создает клиент с текущим API ключом"""
+    if not API_KEYS:
+        raise ValueError("No API keys available")
+
+    current_key = API_KEYS[current_key_index]
+    return OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=current_key,
+    )
+
+
+def _switch_to_next_key():
+    """Переключается на следующий API ключ"""
+    global current_key_index
+    current_key_index = (current_key_index + 1) % len(API_KEYS)
+    print(f"Switched to API key index: {current_key_index + 1}")
+
 
 MODEL = os.getenv("MODEL")
 
@@ -32,12 +68,13 @@ def _extract_json_from_text(text: str) -> tuple[str, str | None]:
         end_idx = text.rfind('}')
 
         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-            json_str = text[start_idx: end_idx + 1]
+            end_position = end_idx + 1
+            json_str = text[start_idx:end_position]
             # Проверяем, что это валидный JSON
             json.loads(json_str)  # Если не валиден, выбросит исключение
             json_data = json_str
             # Удаляем JSON из текста
-            cleaned_text = text[:start_idx] + text[end_idx + 1:]
+            cleaned_text = text[:start_idx] + text[end_position:]
             # Очищаем текст
             cleaned_text = cleaned_text.strip()
     except Exception as e:
@@ -51,38 +88,80 @@ def send_to_llm(user_id: str, user_message: str) -> str:
 
     messages = [m.model_dump() for m in get_conversation(user_id)]
 
-    completion = client.chat.completions.create(
-        model=MODEL,
-        messages=messages,
-        extra_body={
-            "reasoning": {"exclude": True},
-        },
-    )
+    max_retries = len(API_KEYS)
 
-    response = completion.choices[0].message.content
+    for attempt in range(max_retries):
+        try:
+            client = _get_client()
+            completion = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                extra_body={
+                    "reasoning": {"exclude": True},
+                },
+            )
 
-    if not response:
-        return ""
+            response = completion.choices[0].message.content
 
-    if response.startswith('\n'):
-        response = response.lstrip('\n')
+            if not response:
+                return ""
 
-    response = response.lstrip()
+            if response.startswith('\n'):
+                response = response.lstrip('\n')
 
-    # Извлекаем JSON и оставляем только текстовую часть для ответа пользователю
-    cleaned_response, json_data = _extract_json_from_text(response)
+            response = response.lstrip()
 
-    # Если нашли JSON, сохраняем его отдельно (если нужно)
-    if json_data:
-        print(f"Найден JSON в ответе: {json_data}")  # Для отладки
-        # Здесь можно сохранить JSON в кэш или базу, если нужно
+            # Извлекаем JSON и оставляем только текстовую часть для ответа пользователю
+            cleaned_response, json_data = _extract_json_from_text(response)
 
-    # На фронт отправляем только очищенный текст
-    final_response = cleaned_response if cleaned_response else response
+            # Если нашли JSON, сохраняем его отдельно (если нужно)
+            if json_data:
+                print(f"Найден JSON в ответе: {json_data}")  # Для отладки
+                # Здесь можно сохранить JSON в кэш или базу, если нужно
 
-    add_message(user_id, "assistant", final_response)
+            # На фронт отправляем только очищенный текст
+            final_response = cleaned_response if cleaned_response else response
 
-    return final_response
+            add_message(user_id, "assistant", final_response)
+
+            return final_response
+
+        except Exception as e:
+            # Универсальная обработка всех исключений
+            error_str = str(e).lower()
+
+            # Проверяем все возможные признаки rate limit
+            is_rate_limit = (
+                hasattr(e, 'status')
+                and e.status == 429  # Прямой статус 429
+                or '429' in error_str  # Код 429 в тексте ошибки
+                or 'rate limit' in error_str  # Упоминание rate limit
+                or 'ratelimit' in error_str  # Альтернативное написание
+                or 'too many requests' in error_str  # Другая формулировка
+                or 'exceeded' in error_str  # Общее указание на превышение
+            )
+
+            if is_rate_limit:
+                print(f"Rate limit detected on attempt {attempt + 1}. Error: {e}")
+                print("Switching API key...")
+
+                if attempt < max_retries - 1:
+                    _switch_to_next_key()
+                    sleep_time = 2 * (attempt + 1)
+                    print(f"Waiting {sleep_time} seconds before retry...")
+                    time.sleep(sleep_time)
+                    continue  # Продолжаем с следующей попытки
+                else:
+                    raise Exception(
+                        f"All {max_retries} API keys exhausted "
+                        f"with rate limits. Last error: {e}"
+                    )
+            else:
+                # Для других исключений просто пробрасываем
+                print(f"Non-rate-limit error: {e}")
+                raise e
+
+    raise Exception(f"Failed after {max_retries} attempts")
 
 
 def parse_llm_goal_response(llm_response: str):

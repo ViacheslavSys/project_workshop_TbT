@@ -1,273 +1,599 @@
-import { useMemo, useState, useCallback } from "react";
-import { useParams, Link } from "react-router-dom";
-import { useSelector } from "react-redux";
-import { samplePortfolios } from "../data/samplePortfolios";
-import PortfolioAssetsTable, { type PortfolioAssetRow } from "../components/PortfolioAssetsTable";
-import InfoTip from "../components/InfoTip";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
+import type { PortfolioRecommendation } from "../api/chat";
+import { fetchPortfolioAnalysis } from "../api/chat";
+import type { PortfolioSummary } from "../api/portfolios";
+import { fetchPortfolioById } from "../api/portfolios";
+import PortfolioAssetsTable, {
+  type PortfolioAssetBlock,
+} from "../components/PortfolioAssetsTable";
 import MLReport from "../components/MLReport";
-import { fetchPortfolioAnalysis, getAnonymousUserId } from "../api/chat";
-import type { RootState } from "../store/store";
+import { useAppSelector } from "../store/hooks";
 
-function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
-function colorFor(v: number, min: number, max: number, invert = false) {
-  const t = clamp((v - min) / (max - min || 1), 0, 1);
-  const p = invert ? 1 - t : t;
-  const hue = 120 * p; // 0 red -> 120 green
-  return `hsl(${hue} 70% 55%)`;
-}
+type LocationState = {
+  portfolio?: PortfolioRecommendation | null;
+  summary?: PortfolioSummary | null;
+};
 
-function LineChart({ data }: { data: number[] }) {
-  const w = 560, h = 160, pad = 16;
-  const min = Math.min(...data), max = Math.max(...data);
-  const norm = (v: number) => (h - pad) - (h - 2 * pad) * ((v - min) / (max - min || 1));
-  const step = (w - 2 * pad) / Math.max(1, data.length - 1);
-  const d = data.map((v, i) => `${i === 0 ? 'M' : 'L'} ${pad + i * step} ${norm(v)}`).join(' ');
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="w-full">
-      <path d={d} fill="none" stroke="currentColor" className="text-primary" strokeWidth="2" />
-    </svg>
-  );
-}
+const reportFormulas = [
+  {
+    title: "Ожидаемая доходность портфеля",
+    latex: "E[R_p] = \\sum_i w_i \\cdot E[R_i]",
+    variables: [
+      { name: "w_i", meaning: "доля i‑го актива в портфеле" },
+      { name: "E[R_i]", meaning: "ожидаемая доходность i‑го актива" },
+    ],
+  },
+  {
+    title: "Риск портфеля (стандартное отклонение)",
+    latex:
+      "\\sigma_p = \\sqrt{\\sum_i w_i^2 \\sigma_i^2 + 2 \\sum_{i<j} w_i w_j \\sigma_i \\sigma_j \\rho_{ij}}",
+    variables: [
+      { name: "\\sigma_i", meaning: "волатильность i‑го актива" },
+      { name: "\\rho_{ij}", meaning: "корреляция пар активов i и j" },
+    ],
+  },
+  {
+    title: "Коэффициент Шарпа",
+    latex: "Sharpe = \\frac{E[R_p] - R_f}{\\sigma_p}",
+    variables: [{ name: "R_f", meaning: "безрисковая ставка" }],
+  },
+];
 
-function DonutChart({ items }: { items: { label: string; value: number; color?: string }[] }) {
-  const size = 180; const stroke = 20; const r = (size / 2) - stroke / 2; const C = 2 * Math.PI * r;
-  const total = items.reduce((s, i) => s + Math.max(0, i.value), 0) || 1;
-  let acc = 0;
-  const palette = ["#4ade80", "#60a5fa", "#f97316", "#e879f9", "#facc15", "#34d399", "#38bdf8", "#fb7185"];
-  return (
-    <div className="flex items-center gap-4">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <g transform={`rotate(-90 ${size/2} ${size/2})`}>
-          {items.map((it, idx) => {
-            const frac = Math.max(0, it.value) / total;
-            const dash = C * frac;
-            const gap = C - dash;
-            const dashoffset = C * acc;
-            acc += frac;
-            const col = it.color || palette[idx % palette.length];
-            return (
-              <circle key={idx} cx={size/2} cy={size/2} r={r} fill="none" stroke={col} strokeWidth={stroke}
-                strokeDasharray={`${dash} ${gap}`} strokeDashoffset={dashoffset} strokeLinecap="butt" />
-            );
-          })}
-          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,.07)" strokeWidth={stroke} />
-        </g>
-      </svg>
-      <div className="space-y-2">
-        {items.map((it, idx) => (
-          <div key={idx} className="flex items-center gap-2 text-sm">
-            <span className="inline-block w-3 h-3 rounded" style={{ background: it.color || palette[idx % palette.length] }} />
-            <span className="text-muted">{it.label}</span>
-            <span className="tabular-nums">{(it.value * 100).toFixed(1)}%</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+const ensureFiniteNumber = (value?: number | null) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
 
-function RiskReturnScatter({ points }: { points: { x: number; y: number; r: number; label: string }[] }) {
-  const w = 360, h = 220, pad = 30;
-  const maxX = Math.max(0.15, ...points.map(p => p.x));
-  const maxY = Math.max(0.25, ...points.map(p => p.y));
-  const sx = (v: number) => pad + (w - 2*pad) * (v / (maxX || 1));
-  const sy = (v: number) => (h - pad) - (h - 2*pad) * (v / (maxY || 1));
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="w-full">
-      <rect x={pad} y={pad} width={w-2*pad} height={h-2*pad} fill="transparent" stroke="var(--border)" />
-      {Array.from({length:4}).map((_,i)=>{
-        const x = pad + (i+1)*(w-2*pad)/5; const y = pad + (i+1)*(h-2*pad)/5;
-        return (
-          <g key={i}>
-            <line x1={x} x2={x} y1={pad} y2={h-pad} stroke="rgba(255,255,255,.06)" />
-            <line x1={pad} x2={w-pad} y1={y} y2={y} stroke="rgba(255,255,255,.06)" />
-          </g>
-        );
-      })}
-      {points.map((p, i) => {
-        const score = clamp((p.y - 0.5*p.x + 0.1) / 0.3, 0, 1);
-        const col = colorFor(score, 0, 1);
-        const radius = 4 + 12 * clamp(p.r, 0, 0.35);
-        return (
-          <g key={i}>
-            <circle cx={sx(p.x)} cy={sy(p.y)} r={radius} fill={col} opacity={0.9} />
-            <text x={sx(p.x)+radius+4} y={sy(p.y)} dy={4} className="text-xs" fill="var(--muted)">{p.label}</text>
-          </g>
-        );
-      })}
-      <text x={w/2} y={h - 4} textAnchor="middle" className="text-xs" fill="var(--muted)">Риск (волатильность)</text>
-      <text x={-h/2} y={12} transform={`rotate(-90)`} textAnchor="middle" className="text-xs" fill="var(--muted)">Ожид. доходность</text>
-    </svg>
-  );
-}
+const formatMoney = (value?: number | null, digits = 0) =>
+  `${ensureFiniteNumber(value).toLocaleString("ru-RU", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })} ₽`;
 
-function Bars({ items, label }: { items: { label: string; value: number }[]; label: string }){
-  const max = Math.max(...items.map(i=>i.value), 0.0001);
-  return (
-    <div>
-      <div className="text-sm text-muted mb-2">{label}</div>
-      <div className="space-y-2">
-        {items.map((it,i)=> (
-          <div key={i} className="flex items-center gap-2">
-            <div className="w-28 text-xs text-muted truncate">{it.label}</div>
-            <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
-              <div className="h-2 rounded" style={{ width: `${(it.value/max)*100}%`, background: colorFor(it.value, 0, max) }} />
-            </div>
-            <div className="w-16 text-right text-xs tabular-nums">{(it.value*100).toFixed(1)}%</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+const formatPercent = (value?: number | null, digits = 1) =>
+  `${((value ?? 0) * 100).toFixed(digits)}%`;
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) {
+    return "";
+  }
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
+    return "";
+  }
+  return new Date(timestamp).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 export default function PortfolioDetailPage() {
-  const { id } = useParams();
-  const portfolio = useMemo(() => samplePortfolios.find(p => p.id === id) || samplePortfolios[0], [id]);
-  const authUserId = useSelector((state: RootState) => state.auth.user?.id);
-  const userId = authUserId ?? getAnonymousUserId();
+  const params = useParams<{ id: string }>();
+  const location = useLocation();
+  const { isAuthenticated, accessToken } = useAppSelector(
+    (state) => state.auth,
+  );
+  const canViewFullDetails = Boolean(isAuthenticated && accessToken);
+  const portfolioId = params.id;
 
-  const [analysis, setAnalysis] = useState<string | null>(null);
+  const locationState = (location.state as LocationState | null) ?? null;
+  const initialPortfolio = locationState?.portfolio ?? null;
+
+  const [portfolio, setPortfolio] = useState<PortfolioRecommendation | null>(
+    initialPortfolio,
+  );
+  const [loading, setLoading] = useState(!initialPortfolio);
+  const [error, setError] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<string>("");
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  const handleFetchAnalysis = useCallback(async () => {
+  useEffect(() => {
+    if (!canViewFullDetails) {
+      setLoading(false);
+    }
+  }, [canViewFullDetails]);
+
+  const fetchLatestPortfolio = useCallback(async () => {
+    if (!accessToken || !portfolioId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetchPortfolioById(accessToken, portfolioId);
+      const recommendationPayload =
+        response.recommendation as
+          | PortfolioRecommendation
+          | PortfolioRecommendation[]
+          | null
+          | undefined;
+      const next = Array.isArray(recommendationPayload)
+        ? recommendationPayload[0]
+        : recommendationPayload ?? null;
+
+      if (!next) {
+        setError("Сервер не вернул рекомендацию. Попробуйте позже.");
+        setPortfolio(null);
+        return;
+      }
+
+      setPortfolio(next);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Не удалось получить данные портфеля.";
+      setError(message);
+      setPortfolio(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken, portfolioId]);
+
+  useEffect(() => {
+    if (!initialPortfolio && canViewFullDetails && portfolioId) {
+      fetchLatestPortfolio();
+    }
+  }, [
+    initialPortfolio,
+    canViewFullDetails,
+    portfolioId,
+    fetchLatestPortfolio,
+  ]);
+
+  const handleRefresh = useCallback(() => {
+    if (!accessToken || !portfolioId) return;
+    fetchLatestPortfolio();
+  }, [fetchLatestPortfolio, accessToken, portfolioId]);
+
+  const fetchAnalysis = useCallback(async () => {
+    if (!accessToken || !portfolioId) return;
     setAnalysisError(null);
     setAnalysisLoading(true);
     try {
-      const result = await fetchPortfolioAnalysis(userId);
-      setAnalysis(result);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось получить объяснение расчётов";
+      const explanation = await fetchPortfolioAnalysis(accessToken, portfolioId);
+      setAnalysis(explanation);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Не удалось получить объяснение расчётов.";
       setAnalysisError(message);
+      setAnalysis("");
     } finally {
       setAnalysisLoading(false);
     }
-  }, [userId]);
+  }, [accessToken, portfolioId]);
 
-  const tableRows: PortfolioAssetRow[] = useMemo(() => (
-    portfolio.assets.map(a => ({
-      ticker: a.ticker,
-      name: a.name,
-      allocation: a.allocation,
-      expectedReturn: a.expectedReturn,
-      risk: a.risk,
-      value: portfolio.totalValue * a.allocation,
-      dividendYield: a.dividendYield,
-      ytm: a.ytm,
-      sector: a.sector,
-      cycleFactor: a.cycleFactor,
-    }))
-  ), [portfolio]);
-  const reportFormulas = useMemo(() => ([
-    {
-      title: "Ожидаемая доходность портфеля",
-      latex: "E[R_p] = \\sum_i w_i \\cdot E[R_i]",
-      variables: [
-        { name: "w_i", meaning: "доля i-го актива" },
-        { name: "E[R_i]", meaning: "ожидаемая доходность i-го актива" }
-      ]
-    },
-    {
-      title: "Риск (волатильность) портфеля (упрощённо)",
-      latex: "\\sigma_p = \\sqrt{\\sum_i w_i^2 \\sigma_i^2 + 2 \\sum_{i<j} w_i w_j \\sigma_i \\sigma_j \\rho_{ij}}",
-      variables: [
-        { name: "\\sigma_i", meaning: "волатильность i-го актива" },
-        { name: "\\rho_{ij}", meaning: "корреляция активов i и j" }
-      ]
-    },
-    {
-      title: "Коэффициент Шарпа",
-      latex: "Sharpe = \\frac{E[R_p] - R_f}{\\sigma_p}",
-      variables: [
-        { name: "R_f", meaning: "безрисковая ставка" }
-      ]
+  useEffect(() => {
+    setAnalysis("");
+    setAnalysisError(null);
+    setAnalysisLoading(false);
+  }, [portfolioId]);
+
+  const allocationSummary = useMemo(() => {
+    if (!portfolio?.composition) {
+      return [];
     }
-  ]), []);
+    return portfolio.composition.map((block) => ({
+      assetType: block.asset_type,
+      weight: block.target_weight ?? 0,
+      amount: block.amount ?? 0,
+    }));
+  }, [portfolio]);
 
-  const shouldShowReport = analysisLoading || analysis !== null;
-  const explanationText = analysisLoading ? "Идёт загрузка отчёта о расчётах..." : (analysis ?? "");
+  const assetBlocks = useMemo<PortfolioAssetBlock[]>(() => {
+    if (!portfolio?.composition) return [];
+
+    const totalAmount =
+      portfolio.target_amount ?? portfolio.future_value_with_inflation ?? 0;
+
+    return portfolio.composition.map((block) => {
+      const assets = Array.isArray(block.assets) ? block.assets : [];
+      return {
+        assetType: block.asset_type,
+        targetWeight: block.target_weight,
+        amount: block.amount,
+        rows: assets.map((asset) => ({
+          ticker: asset.ticker || block.asset_type,
+          name: asset.name || block.asset_type,
+          allocation:
+            asset.weight ??
+            block.target_weight ??
+            (asset.amount && totalAmount
+              ? asset.amount / totalAmount
+              : 0),
+          quantity:
+            typeof asset.quantity === "number" ? asset.quantity : undefined,
+          price: typeof asset.price === "number" ? asset.price : undefined,
+          amount:
+            asset.amount ??
+            (asset.weight ?? block.target_weight ?? 0) * totalAmount,
+        })),
+      };
+    });
+  }, [portfolio]);
+
+  const planSteps = useMemo(() => {
+    const steps = portfolio?.step_by_step_plan?.steps;
+    return Array.isArray(steps) ? steps : [];
+  }, [portfolio]);
+
+  const planGeneratedAt = useMemo(() => {
+    if (!portfolio?.step_by_step_plan?.generated_at) {
+      return "";
+    }
+    return formatDateTime(portfolio.step_by_step_plan.generated_at);
+  }, [portfolio]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-muted">
+        Готовим актуальную рекомендацию по портфелю...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <div className="card">
+          <div className="card-header text-lg font-semibold">
+            Не удалось загрузить портфель
+          </div>
+          <div className="card-body space-y-4 text-sm text-muted">
+            <p>{error}</p>
+            <button
+              type="button"
+              className="btn"
+              onClick={handleRefresh}
+              disabled={loading}
+            >
+              Повторить запрос
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!portfolio) {
+    if (!canViewFullDetails) {
+      return <PortfolioDetailEmptyState />;
+    }
+
+    return (
+      <div className="mx-auto max-w-2xl">
+        <div className="card">
+          <div className="card-header text-lg font-semibold">
+            Данных для отображения нет
+          </div>
+          <div className="card-body text-sm text-muted">
+            Пересчитайте портфель, чтобы увидеть рекомендации.
+            <div className="pt-4">
+              <button type="button" className="btn" onClick={handleRefresh}>
+                Пересчитать
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const horizonYears = (portfolio.investment_term_months ?? 0) / 12 || 0;
+  const sensitiveInfoRestricted = !canViewFullDetails;
 
   return (
-    <div className="grid gap-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Аналитика портфеля — {portfolio.name}</h1>
-          <p className="text-muted text-sm">Профиль риска: {portfolio.riskLevel}</p>
+          <p className="text-xs uppercase text-muted">
+            Портфель #{params.id ?? "—"}
+          </p>
+          <h1 className="text-2xl font-semibold">{portfolio.smart_goal}</h1>
+          <p className="text-sm text-muted flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>Цель:</span>
+            <SensitiveValue restricted={sensitiveInfoRestricted}>
+              {formatMoney(portfolio.target_amount)}
+            </SensitiveValue>
+            <span>· Горизонт:</span>
+            <SensitiveValue restricted={sensitiveInfoRestricted}>
+              {`${horizonYears.toFixed(1)} лет`}
+            </SensitiveValue>
+            <span>· Ожидаемая доходность:</span>
+            <SensitiveValue restricted={sensitiveInfoRestricted}>
+              {formatPercent(portfolio.expected_portfolio_return)}
+            </SensitiveValue>
+          </p>
         </div>
-        <Link to="/portfolios" className="tab">← К списку портфелей</Link>
-      </div>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/portfolios" className="tab">
+            ← Назад к списку
+          </Link>
+          <button
+            type="button"
+            className="tab tab-active"
+            onClick={handleRefresh}
+            disabled={loading}
+          >
+            Обновить расчёт
+          </button>
+        </div>
+      </header>
 
-      <div className="grid md:grid-cols-4 gap-4">
-        <div className="card"><div className="card-body">
-          <div className="text-xs text-muted">Текущая стоимость <InfoTip title="Стоимость портфеля">Оценка текущей суммарной стоимости всех активов портфеля.</InfoTip></div>
-          <div className="text-2xl font-bold">${portfolio.totalValue.toLocaleString()}</div>
-        </div></div>
-        <div className="card"><div className="card-body">
-          <div className="text-xs text-muted">Ожидаемая доходность <InfoTip title="Ожидаемая доходность">Прогноз годовой доходности на горизонте инвестирования. Не является гарантией.</InfoTip></div>
-          <div className="text-2xl font-bold" style={{ color: colorFor(portfolio.expectedReturn, 0, 0.2) }}>{(portfolio.expectedReturn*100).toFixed(1)}%</div>
-        </div></div>
-        <div className="card"><div className="card-body">
-          <div className="text-xs text-muted">Волатильность <InfoTip title="Волатильность">Оценка колеблемости стоимости портфеля. Ниже — более стабильно.</InfoTip></div>
-          <div className="text-2xl font-bold" style={{ color: colorFor(portfolio.metrics.volatility, 0, 0.35, true) }}>{(portfolio.metrics.volatility*100).toFixed(1)}%</div>
-        </div></div>
-        <div className="card"><div className="card-body">
-          <div className="text-xs text-muted">Sharpe / MaxDD <InfoTip title="Sharpe и Max Drawdown">Sharpe — доходность за вычетом безрисковой, делённая на риск. MaxDD — максимальная просадка.</InfoTip></div>
-          <div className="text-2xl font-bold"><span style={{ color: colorFor(portfolio.metrics.sharpeRatio, 0, 1.6) }}>{portfolio.metrics.sharpeRatio.toFixed(2)}</span> / <span style={{ color: colorFor(-portfolio.metrics.maxDrawdown, -0.4, 0.0, true) }}>{(portfolio.metrics.maxDrawdown*100).toFixed(1)}%</span></div>
-        </div></div>
-      </div>
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard
+          label="Целевая сумма"
+          value={formatMoney(portfolio.target_amount)}
+          restricted={sensitiveInfoRestricted}
+        />
+        <SummaryCard
+          label="Стартовый капитал"
+          value={formatMoney(portfolio.initial_capital)}
+        />
+        <SummaryCard
+          label="Ежемесячный взнос"
+          value={formatMoney(
+            portfolio.monthly_payment_detail?.monthly_payment,
+          )}
+        />
+        <SummaryCard
+          label="Будущая стоимость с инфляцией"
+          value={formatMoney(portfolio.future_value_with_inflation)}
+        />
+        <SummaryCard
+          label="Годовая инфляция в модели"
+          value={formatPercent(portfolio.annual_inflation_rate)}
+          restricted={sensitiveInfoRestricted}
+        />
+        <SummaryCard
+          label="Горизонт инвестиций"
+          value={`${horizonYears.toFixed(1)} года`}
+          restricted={sensitiveInfoRestricted}
+        />
+        <SummaryCard
+          label="Риск-профиль"
+          value={portfolio.risk_profile || "—"}
+          restricted={sensitiveInfoRestricted}
+        />
+        <SummaryCard
+          label="Ожидаемая доходность"
+          value={formatPercent(portfolio.expected_portfolio_return)}
+          restricted={sensitiveInfoRestricted}
+        />
+      </section>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div className="card">
-          <div className="card-header">Аллокация по активам <InfoTip title="Аллокация">Распределение долей портфеля между активами/классами активов.</InfoTip></div>
-          <div className="card-body">
-            <DonutChart items={portfolio.assets.map(a => ({ label: `${a.ticker} ${a.name}`, value: a.allocation }))} />
-          </div>
-        </div>
-        <div className="card">
-          <div className="card-header">Доходность vs Риск <InfoTip title="Доходность vs Риск">Сравнение ожидаемой доходности и риска по активам. Размер точки — доля.</InfoTip></div>
-          <div className="card-body">
-            <RiskReturnScatter points={portfolio.assets.map(a => ({ x: a.risk, y: a.expectedReturn, r: a.allocation, label: a.ticker }))} />
-          </div>
-        </div>
-      </div>
+      <RestrictedPortfolioDetails restricted={!canViewFullDetails}>
+        <div className="space-y-6">
+          <section className="card">
+            <div className="card-header flex items-center justify-between">
+              <div>
+                <div className="text-lg font-semibold">Разбивка по классам активов</div>
+                <p className="text-sm text-muted">
+                  Рекомендованные доли классов активов в итоговом портфеле
+                </p>
+              </div>
+            </div>
+            <div className="card-body flex flex-wrap gap-3">
+              {allocationSummary.length ? (
+                allocationSummary.map((item, index) => (
+                  <div
+                    key={`${item.assetType}-${index}`}
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
+                  >
+                    <div className="text-muted">{item.assetType}</div>
+                    <div className="text-lg font-semibold">
+                      {formatPercent(item.weight)}
+                    </div>
+                    <div className="text-xs text-muted">
+                      ≈ {formatMoney(item.amount)}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted">
+                  Нет данных о распределении активов.
+                </p>
+              )}
+            </div>
+          </section>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div className="card">
-          <div className="card-header">Дивиденды / YTM <InfoTip title="Дивиденды и YTM">Для акций — дивидендная доходность. Для облигаций — доходность к погашению.</InfoTip></div>
-          <div className="card-body">
-            <Bars items={portfolio.assets.map(a => ({ label: a.ticker, value: (a.dividendYield ?? a.ytm ?? 0) }))} label="Доходность выплат" />
-          </div>
-        </div>
-        <div className="card">
-          <div className="card-header">Динамика стоимости (демо)</div>
-          <div className="card-body">
-            <LineChart data={portfolio.sparkline} />
-          </div>
-        </div>
-      </div>
+          {assetBlocks.length ? (
+            <PortfolioAssetsTable blocks={assetBlocks} title="Рекомендуемые активы к покупке" />
+          ) : (
+            <div className="card">
+              <div className="card-body text-sm text-muted">
+                Список активов отсутствует. Попробуйте пересчитать портфель.
+              </div>
+            </div>
+          )}
+          {planSteps.length ? (
+            <section className="card space-y-4">
+              <div className="card-header flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-lg font-semibold">Пошаговый инвестиционный план</div>
+                  <p className="text-sm text-muted">
+                    Подсказывает, как распределять ежемесячный взнос {formatMoney(portfolio.monthly_payment_detail?.monthly_payment)} и выполнять покупки по плану.
+                  </p>
+                </div>
+                {planGeneratedAt ? (
+                  <div className="text-xs text-muted">Сформирован {planGeneratedAt}</div>
+                ) : null}
+              </div>
+              <div className="card-body space-y-4">
+                {planSteps.map((step, index) => {
+                  const actions = Array.isArray(step.actions) ? step.actions : [];
+                  const displayNumber = Number.isFinite(step.step_number)
+                    ? step.step_number + 1
+                    : index + 1;
 
-      <div className="flex flex-col gap-2 items-start">
-        <button
-          type="button"
-          className={`btn ${analysisLoading ? "opacity-70 cursor-not-allowed" : ""}`}
-          onClick={handleFetchAnalysis}
-          disabled={analysisLoading}
-        >
-          {analysisLoading ? "Считаем..." : "Как посчитано"}
-        </button>
-        {analysisError ? (
-          <div className="text-sm text-danger">
-            Не удалось загрузить объяснение расчётов: {analysisError}
+                  return (
+                    <article
+                      key={`plan-step-${step.step_number}-${index}`}
+                      className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <div className="text-xs uppercase text-muted">Шаг {displayNumber}</div>
+                        <div className="text-sm font-semibold">{step.title}</div>
+                      </div>
+                      {step.description ? (
+                        <p className="text-sm text-muted">{step.description}</p>
+                      ) : null}
+                      {actions.length ? (
+                        <ul className="list-disc space-y-1 pl-5 text-sm text-text">
+                          {actions.map((action, actionIndex) => (
+                            <li
+                              key={`plan-step-${step.step_number}-${actionIndex}`}
+                              className="text-muted"
+                            >
+                              {action}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+        </div>
+      </RestrictedPortfolioDetails>
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-semibold">Объяснение расчётов</h2>
+            <p className="text-sm text-muted">
+              Генерируется на сервере на основе ваших целей и риск-профиля
+            </p>
+          </div>
+          <button
+            type="button"
+            className="tab"
+            onClick={fetchAnalysis}
+            disabled={analysisLoading || !canViewFullDetails}
+          >
+            {analysisLoading ? "Запрашиваем..." : "Запросить объяснение"}
+          </button>
+        </div>
+        {analysisError && !analysisLoading ? (
+          <div className="rounded-xl border border-danger/40 bg-danger/5 px-4 py-3 text-sm text-danger">
+            {analysisError}
           </div>
         ) : null}
-      </div>
-
-      {shouldShowReport ? (
-        <MLReport explanation={explanationText} formulas={reportFormulas} />
-      ) : null}
-
-      <PortfolioAssetsTable rows={tableRows} title="Активы и метрики" />
+        {(analysisLoading || analysis) && (
+          <MLReport
+            explanation={
+              analysisLoading
+                ? "AI готовит пояснения по расчётам..."
+                : analysis
+            }
+            formulas={reportFormulas}
+          />
+        )}
+      </section>
     </div>
   );
 }
+
+function PortfolioDetailEmptyState() {
+  return (
+    <div className="mx-auto max-w-2xl">
+      <div className="card text-center">
+        <div className="card-header text-lg font-semibold">
+          Войдите, чтобы увидеть портфель
+        </div>
+        <div className="card-body space-y-4 text-sm text-muted">
+          <p>
+            Детальная информация доступна только авторизованным пользователям.
+            Сначала создайте портфель на странице чата.
+          </p>
+          <div>
+            <Link to="/chat" className="btn">
+              Создать портфель
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  restricted = false,
+}: {
+  label: string;
+  value: ReactNode;
+  restricted?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+      <div className="text-xs uppercase text-muted">{label}</div>
+      <div className="text-base font-semibold">
+        <SensitiveValue restricted={restricted}>{value}</SensitiveValue>
+      </div>
+    </div>
+  );
+}
+
+function SensitiveValue({
+  children,
+  restricted,
+}: {
+  children: ReactNode;
+  restricted: boolean;
+}) {
+  if (!restricted) {
+    return <>{children}</>;
+  }
+
+  return (
+    <span
+      className="blur-sm select-none"
+      aria-label="Доступно после регистрации"
+    >
+      {children}
+    </span>
+  );
+}
+
+function RestrictedPortfolioDetails({
+  children,
+  restricted,
+}: {
+  children: ReactNode;
+  restricted: boolean;
+}) {
+  if (!restricted) {
+    return <>{children}</>;
+  }
+
+  return (
+    <div className="relative">
+      <div
+        className="select-none blur-md pointer-events-none"
+        aria-hidden="true"
+      >
+        {children}
+      </div>
+      <div className="pointer-events-none absolute inset-0 rounded-2xl border border-dashed border-border/70 bg-bg/80 backdrop-blur" />
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-start gap-4 px-6 py-10 text-center">
+        <p className="text-base font-semibold text-text">
+          Структура портфеля (распределение и количество ценных бумаг) доступна только
+          зарегистрированным пользователям.
+        </p>
+        <Link to="/auth" className="btn">
+          Войти, чтобы увидеть структуру
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+

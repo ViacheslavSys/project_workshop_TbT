@@ -1,16 +1,29 @@
+from datetime import datetime
 from typing import Dict, List, Tuple
 
 from sqlalchemy.orm import Session
 
 from app.core.redis_cache import cache
+from app.models.asset import Asset
+from app.models.portfolio import AssetAllocation as AssetAllocationModel
+from app.models.portfolio import MonthlyPayment
+from app.models.portfolio import PlanStep as PlanStepModel
+from app.models.portfolio import Portfolio
+from app.models.portfolio import PortfolioComposition as PortfolioCompositionModel
+from app.models.portfolio import StepAction as StepActionModel
+from app.models.portfolio import StepByStepPlan as StepByStepPlanModel
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.inflation_repository import InflationRepository
+from app.repositories.portfolio_repository import PortfolioRepository
+from app.schemas.portfolio import AssetAllocation as AssetAllocationSchema
 from app.schemas.portfolio import (
-    AssetAllocation,
     MonthlyPaymentDetail,
+    PlanStep,
     PortfolioCalculationResponse,
     PortfolioComposition,
     PortfolioRecommendation,
+    PortfolioSummary,
+    StepByStepPlan,
 )
 
 
@@ -19,6 +32,7 @@ class PortfolioService:
         self.db_session = db_session
         self.inflation_repo = InflationRepository()
         self.asset_repo = AssetRepository()
+        self.portfolio_repo = PortfolioRepository(db_session)
 
     def calculate_future_value_with_inflation(
         self, goal_sum: float, term_months: int
@@ -44,35 +58,30 @@ class PortfolioService:
         portfolio_return: float,
         start_capital: float = 0,
     ) -> MonthlyPaymentDetail:
-        """
-        Расчет ежемесячного платежа с учётом доходности и стартового капитала
-        """
         # Проверяем входные параметры
-        if portfolio_return is None:
-            portfolio_return = 0.08
-
-        if portfolio_return <= 0:
+        if portfolio_return is None or portfolio_return <= 0:
             portfolio_return = 0.08
 
         # Расчет месячной ставки
         monthly_rate = (1 + portfolio_return) ** (1 / 12) - 1
         months = years * 12
 
-        # Защита от деления на ноль
-        if abs(monthly_rate) < 1e-10:
-            annuity_factor = months
-        else:
-            annuity_factor = ((1 + monthly_rate) ** months - 1) / monthly_rate
+        # ✅ ИСПРАВЛЕНИЕ: ВСЕГДА используем точную формулу аннуитета
+        annuity_factor = ((1 + monthly_rate) ** months - 1) / monthly_rate
 
+        # ✅ ИСПРАВЛЕНИЕ: Стартовый капитал растет по МЕСЯЧНОЙ ставке
         if start_capital > 0:
-            future_capital = start_capital * (1 + portfolio_return) ** years
-            monthly_payment = max(0, (future_goal - future_capital) / annuity_factor)
+            future_capital = start_capital * (1 + monthly_rate) ** months
         else:
             future_capital = 0
-            monthly_payment = future_goal / annuity_factor
 
-        if monthly_payment < 0:
+        # ✅ ИСПРАВЛЕНИЕ: Проверка нереальных сценариев
+        if future_capital >= future_goal:
             monthly_payment = 0
+        else:
+            monthly_payment = (future_goal - future_capital) / annuity_factor
+
+        monthly_payment = max(0, monthly_payment)
 
         return MonthlyPaymentDetail(
             monthly_payment=monthly_payment,
@@ -176,19 +185,18 @@ class PortfolioService:
 
     def select_stocks_by_risk(
         self, risk_profile: str, stock_budget: float
-    ) -> List[AssetAllocation]:
+    ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
         """Подбор акций по риск-профилю"""
 
         all_stocks = self.asset_repo.get_assets_by_type(self.db_session, 'акция')
 
         strategies = {
-            'conservative': ['SBER', 'GAZP', 'LKOH', 'VTBR'],
-            'moderate': ['SBER', 'GAZP', 'LKOH', 'VTBR', 'GMKN', 'ROSN', 'MGNT'],
+            'conservative': ['SBER', 'GAZP', 'LKOH'],
+            'moderate': ['SBER', 'GAZP', 'LKOH', 'GMKN', 'ROSN', 'MGNT'],
             'aggressive': [
                 'SBER',
                 'GAZP',
                 'LKOH',
-                'VTBR',
                 'GMKN',
                 'ROSN',
                 'MGNT',
@@ -211,7 +219,7 @@ class PortfolioService:
 
     def calculate_stock_quantities(
         self, stocks: List, weights: List[float], stock_budget: float
-    ) -> List[AssetAllocation]:
+    ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
         """Расчет количества акций для покупки"""
 
         result = []
@@ -220,7 +228,7 @@ class PortfolioService:
                 quantity = int((stock_budget * weights[i]) / stock.price_now)
                 if quantity > 0:
                     result.append(
-                        AssetAllocation(
+                        AssetAllocationSchema(  # ← Используйте Schema
                             name=stock.name,
                             type='акции',
                             ticker=stock.ticker,
@@ -236,7 +244,7 @@ class PortfolioService:
 
     def select_bonds_by_term(
         self, term_years: float, bond_budget: float
-    ) -> List[AssetAllocation]:
+    ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
         """Подбор облигаций по сроку инвестирования"""
 
         all_bonds = self.asset_repo.get_assets_by_type(self.db_session, 'облигация')
@@ -274,7 +282,7 @@ class PortfolioService:
 
     def calculate_bond_quantities(
         self, bonds: List, weights: List[float], bond_budget: float
-    ) -> List[AssetAllocation]:
+    ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
         """Расчет количества облигаций для покупки"""
 
         if not bonds:
@@ -286,7 +294,7 @@ class PortfolioService:
                 quantity = int((bond_budget * weights[i]) / bond.price_now)
                 if quantity > 0:
                     result.append(
-                        AssetAllocation(
+                        AssetAllocationSchema(  # ← Используйте Schema
                             name=bond.name,
                             type='облигации',
                             ticker=bond.ticker,
@@ -302,7 +310,7 @@ class PortfolioService:
 
     def select_etf_assets(
         self, asset_type: str, budget: float
-    ) -> List[AssetAllocation]:
+    ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
         """Подбор ETF активов (золото, недвижимость)"""
 
         etf_assets = self.asset_repo.get_assets_by_type(self.db_session, asset_type)
@@ -315,7 +323,7 @@ class PortfolioService:
             quantity = int(budget / asset.price_now)
             if quantity > 0:
                 return [
-                    AssetAllocation(
+                    AssetAllocationSchema(  # ← Используйте Schema
                         name=asset.name,
                         type=asset_type,
                         ticker=asset.ticker,
@@ -417,6 +425,30 @@ class PortfolioService:
             start_capital=initial_capital,
         )
 
+        # Создаем временный объект рекомендации для генерации плана
+        temp_recommendation = PortfolioRecommendation(
+            target_amount=future_value,
+            initial_capital=initial_capital,
+            investment_term_months=term_months,
+            annual_inflation_rate=inflation_rate,
+            future_value_with_inflation=future_value,
+            risk_profile=risk_profile,
+            time_horizon=(
+                'short' if term_years <= 3 else 'medium' if term_years <= 7 else 'long'
+            ),
+            smart_goal=smart_goal,
+            total_investment=total_investment,
+            expected_portfolio_return=expected_return,
+            composition=composition,
+            monthly_payment_detail=monthly_payment_detail,
+        )
+
+        # 🆕 Генерация пошагового плана
+        step_by_step_plan = self.generate_step_by_step_plan(
+            temp_recommendation, initial_capital
+        )
+
+        # Возвращаем полную рекомендацию с планом
         return PortfolioRecommendation(
             target_amount=future_value,
             initial_capital=initial_capital,
@@ -432,6 +464,7 @@ class PortfolioService:
             expected_portfolio_return=expected_return,
             composition=composition,
             monthly_payment_detail=monthly_payment_detail,
+            step_by_step_plan=step_by_step_plan,
         )
 
     def calculate_portfolio(self, user_id: str) -> PortfolioCalculationResponse:
@@ -475,3 +508,501 @@ class PortfolioService:
         cache.set_json(portfolio_key, portfolio_response.dict(), expire=3600)
 
         return portfolio_response
+
+    def create_portfolio(
+        self,
+        portfolio_data: PortfolioCalculationResponse,
+        user_id: int,
+        portfolio_name: str = "Основной портфель",
+    ) -> Portfolio:
+        """Создание портфеля в базе данных с пошаговым планом"""
+
+        # Создаем основной объект портфеля
+        portfolio = Portfolio(
+            user_id=user_id,
+            portfolio_name=portfolio_name,
+            target_amount=portfolio_data.target_amount,
+            initial_capital=portfolio_data.initial_capital,
+            investment_term_months=portfolio_data.investment_term_months,
+            annual_inflation_rate=portfolio_data.annual_inflation_rate,
+            future_value_with_inflation=portfolio_data.future_value_with_inflation,
+            risk_profile=portfolio_data.recommendation.risk_profile,
+            time_horizon=portfolio_data.recommendation.time_horizon,
+            smart_goal=portfolio_data.recommendation.smart_goal,
+            total_investment=portfolio_data.recommendation.total_investment,
+            expected_portfolio_return=(
+                portfolio_data.recommendation.expected_portfolio_return
+            ),
+        )
+
+        self.db_session.add(portfolio)
+        self.db_session.flush()
+
+        # Создаем monthly_payment
+        monthly_payment = MonthlyPayment(
+            portfolio_id=portfolio.id,
+            monthly_payment=(
+                portfolio_data.recommendation.monthly_payment_detail.monthly_payment
+            ),
+            future_capital=(
+                portfolio_data.recommendation.monthly_payment_detail.future_capital
+            ),
+            total_months=(
+                portfolio_data.recommendation.monthly_payment_detail.total_months
+            ),
+            monthly_rate=(
+                portfolio_data.recommendation.monthly_payment_detail.monthly_rate
+            ),
+            annuity_factor=(
+                portfolio_data.recommendation.monthly_payment_detail.annuity_factor
+            ),
+        )
+        self.db_session.add(monthly_payment)
+
+        # Создаем композиции портфеля
+        for comp in portfolio_data.recommendation.composition:
+            portfolio_composition = PortfolioCompositionModel(  # ← Используйте Model
+                portfolio_id=portfolio.id,
+                asset_type=comp.asset_type,
+                target_weight=comp.target_weight,
+                actual_weight=comp.actual_weight,
+                amount=comp.amount,
+            )
+            self.db_session.add(portfolio_composition)
+            self.db_session.flush()
+
+            # Добавляем распределения активов
+            for asset_alloc in comp.assets:
+                asset = (
+                    self.db_session.query(Asset)
+                    .filter(Asset.ticker == asset_alloc.ticker)
+                    .first()
+                )
+
+                if asset:
+                    asset_allocation = AssetAllocationModel(  # ← Используйте Model
+                        portfolio_composition_id=portfolio_composition.id,
+                        asset_id=asset.id,
+                        quantity=asset_alloc.quantity,
+                        target_weight=asset_alloc.weight,
+                        purchase_price=asset_alloc.price,
+                    )
+                    self.db_session.add(asset_allocation)
+
+        # Создаем пошаговый план, если он есть в данных
+        if (
+            portfolio_data.recommendation.step_by_step_plan
+            and portfolio_data.recommendation.step_by_step_plan.steps
+        ):
+
+            try:
+                generated_at = datetime.fromisoformat(
+                    portfolio_data.recommendation.step_by_step_plan.generated_at
+                )
+            except (ValueError, AttributeError):
+                generated_at = datetime.now()
+
+            step_plan = StepByStepPlanModel(  # ← Используйте Model
+                portfolio_id=portfolio.id,
+                generated_at=generated_at,
+                total_steps=len(portfolio_data.recommendation.step_by_step_plan.steps),
+            )
+            self.db_session.add(step_plan)
+            self.db_session.flush()
+
+            # Добавляем шаги плана
+            for step_data in portfolio_data.recommendation.step_by_step_plan.steps:
+                plan_step = PlanStepModel(  # ← Используйте Model
+                    step_by_step_plan_id=step_plan.id,
+                    step_number=step_data.step_number,
+                    title=step_data.title,
+                    description=step_data.description,
+                )
+                self.db_session.add(plan_step)
+                self.db_session.flush()
+
+                # Добавляем действия для шага
+                for action_order, action_text in enumerate(step_data.actions, 1):
+                    step_action = StepActionModel(  # ← Используйте Model
+                        plan_step_id=plan_step.id,
+                        action_text=action_text,
+                        action_order=action_order,
+                    )
+                    self.db_session.add(step_action)
+
+        self.db_session.commit()
+        return portfolio
+
+    def get_user_portfolios_from_db(self, user_id: int) -> list:
+        """Получение всех портфелей пользователя из БД"""
+        portfolios = self.portfolio_repo.get_user_portfolios(user_id)
+
+        portfolio_summaries = []
+        for portfolio in portfolios:
+            portfolio_summaries.append(
+                PortfolioSummary(
+                    id=portfolio.id,
+                    portfolio_name=portfolio.portfolio_name,
+                    target_amount=portfolio.target_amount,
+                    initial_capital=portfolio.initial_capital,
+                    risk_profile=portfolio.risk_profile,
+                    created_at=(
+                        portfolio.created_at.isoformat()
+                        if portfolio.created_at
+                        else None
+                    ),
+                )
+            )
+
+        return portfolio_summaries
+
+    def recalculate_portfolio(self, portfolio_id: int, user_id: int) -> dict:
+        """Перерасчет портфеля на основе текущих цен активов"""
+
+        portfolio = self.portfolio_repo.get_portfolio_by_id(portfolio_id, user_id)
+        if not portfolio:
+            raise ValueError("Портфель не найден")
+
+        # Здесь будет логика перерасчета на основе текущих цен
+        # Пока просто возвращаем информацию о портфеле
+        return {
+            "portfolio_id": portfolio.id,
+            "portfolio_name": portfolio.portfolio_name,
+        }
+
+    def generate_step_by_step_plan(
+        self, recommendation: PortfolioRecommendation, initial_capital: float
+    ) -> StepByStepPlan:
+        steps = []
+        monthly_payment = recommendation.monthly_payment_detail.monthly_payment
+
+        # 1. ШАГ 0: Первоначальные покупки на стартовый капитал
+        if initial_capital > 0:
+            # ✅ ПЕРЕСЧИТЫВАЕМ активы на реальный стартовый капитал
+            total_future_value = sum(comp.amount for comp in recommendation.composition)
+            initial_actions = []
+
+            for composition in recommendation.composition:
+                # Определяем долю этого типа в общем портфеле
+                if total_future_value > 0:
+                    type_share = composition.amount / total_future_value
+                else:
+                    type_share = composition.target_weight
+
+                # Выделяем бюджет на этот тип активов
+                type_budget = initial_capital * type_share
+
+                # Распределяем бюджет между активами этого типа
+                if composition.assets:
+                    total_assets_weight = sum(
+                        asset.weight for asset in composition.assets
+                    )
+                    for asset in composition.assets:
+                        if total_assets_weight > 0:
+                            asset_budget = type_budget * (
+                                asset.weight / total_assets_weight
+                            )
+                            quantity = (
+                                int(asset_budget / asset.price)
+                                if asset.price > 0
+                                else 0
+                            )
+                            if quantity > 0:
+                                amount = quantity * asset.price
+                                initial_actions.append(
+                                    f"Купить {quantity} шт. "
+                                    f"{asset.ticker} ({asset.name}) "
+                                    f"по {asset.price:.0f} ₽ за {amount:.0f} ₽"
+                                )
+
+            steps.append(
+                PlanStep(
+                    step_number=0,
+                    title="ПЕРВОНАЧАЛЬНЫЕ ИНВЕСТИЦИИ",
+                    description=(
+                        "Инвестируйте ваш стартовый капитал "
+                        f"{initial_capital:.0f} ₽:"
+                    ),
+                    actions=initial_actions,
+                )
+            )
+
+        # 2. ШАГ 1: Регулярные инвестиции (оставляем как было)
+        if monthly_payment > 0:
+            allocation_actions = []
+            for composition in recommendation.composition:
+                monthly_budget = monthly_payment * composition.target_weight
+                if monthly_budget > 0:
+                    allocation_actions.append(
+                        f"{composition.asset_type.capitalize()}: "
+                        f"{monthly_budget:.0f} ₽ "
+                        f"({composition.target_weight * 100:.0f}%)"
+                    )
+
+            steps.append(
+                PlanStep(
+                    step_number=len(steps),
+                    title="РЕГУЛЯРНЫЕ ИНВЕСТИЦИИ",
+                    description=f"Каждый месяц инвестируйте {monthly_payment:.0f} ₽:",
+                    actions=allocation_actions,
+                )
+            )
+
+            # 3. ШАГ 2: План покупок по месяцам (оставляем как было)
+            purchase_plan = self._generate_purchase_plan(
+                recommendation, monthly_payment
+            )
+            steps.append(
+                PlanStep(
+                    step_number=len(steps),
+                    title="ПЛАН ПОКУПОК ПО МЕСЯЦАМ",
+                    description=(
+                        "Рациональная последовательность " "(сначала доступные активы):"
+                    ),
+                    actions=purchase_plan,
+                )
+            )
+
+        # 4. ШАГ 3: Контроль и корректировка (оставляем как было)
+        steps.append(
+            PlanStep(
+                step_number=len(steps),
+                title="КОНТРОЛЬ И КОРРЕКТИРОВКА",
+                description="Регулярно отслеживайте ваш портфель:",
+                actions=[
+                    "Раз в месяц проверяйте актуальные цены",
+                    "Раз в 6 месяцев rebalance портфель",
+                    "При изменении риск-профиля пересмотрите стратегию",
+                    (
+                        f"Достигнув цели {recommendation.target_amount:.0f} ₽ "
+                        "- поздравляем!"
+                    ),
+                ],
+            )
+        )
+
+        return StepByStepPlan(
+            steps=steps, generated_at=datetime.now().isoformat(), total_steps=len(steps)
+        )
+
+    def _generate_purchase_plan(
+        self, recommendation: PortfolioRecommendation, monthly_payment: float
+    ) -> List[str]:
+        """
+        тратим ВЕСЬ бюджет месяца
+        """
+        purchase_plan = []
+
+        # Собираем все активы с их месячными бюджетами
+        all_assets = []
+        for composition in recommendation.composition:
+            monthly_budget = monthly_payment * composition.target_weight
+            if composition.assets:
+                # Распределяем бюджет между активами этого типа
+                total_assets_weight = sum(asset.weight for asset in composition.assets)
+                for asset in composition.assets:
+                    if total_assets_weight > 0:
+                        asset_monthly_budget = monthly_budget * (
+                            asset.weight / total_assets_weight
+                        )
+                        all_assets.append(
+                            {
+                                'name': f"{asset.ticker} ({asset.name})",
+                                'price': asset.price,
+                                'monthly_budget': asset_monthly_budget,
+                            }
+                        )
+
+        # Сортируем по цене (от дешевых к дорогим)
+        all_assets.sort(key=lambda x: x['price'])
+
+        # Накопленные средства по каждому активу
+        accumulated = {asset['name']: 0 for asset in all_assets}
+
+        for month in range(1, 7):
+            month_budget = monthly_payment
+            month_purchases = []
+            month_spent = 0
+
+            # РАСПРЕДЕЛЯЕМ БЮДЖЕТ МЕСЯЦА
+            for asset in all_assets:
+                asset_name = asset['name']
+                asset_price = asset['price']
+
+                # Добавляем месячный бюджет к накоплениям
+                accumulated[asset_name] += asset['monthly_budget']
+
+                # Покупаем то, что можем
+                if accumulated[asset_name] >= asset_price:
+                    can_buy = int(accumulated[asset_name] // asset_price)
+                    if can_buy > 0:
+                        # Покупаем столько, сколько влезает в бюджет
+                        max_affordable = int(
+                            (month_budget - month_spent) // asset_price
+                        )
+                        actual_buy = min(can_buy, max_affordable)
+
+                        if actual_buy > 0:
+                            cost = actual_buy * asset_price
+                            if month_spent + cost <= month_budget:
+                                accumulated[asset_name] -= cost
+                                month_spent += cost
+                                month_purchases.append(
+                                    f"Купить {actual_buy} шт. "
+                                    f"{asset_name} за {cost:.0f} ₽"
+                                )
+
+            # Форматируем вывод
+            if month_purchases:
+                purchases_str = " + ".join(month_purchases)
+                purchase_plan.append(
+                    f"Месяц {month}: {purchases_str} = {month_spent:.0f} ₽"
+                )
+            else:
+                purchase_plan.append(f"Месяц {month}: Накопить {month_budget:.0f} ₽")
+
+        return purchase_plan
+
+    def save_portfolio_to_db(
+        self,
+        session_token: str,  # session_token для Redis
+        user_id: int,  # authenticated user_id из JWT
+        portfolio_name: str = "Основной портфель",
+    ) -> dict:
+        """Сохранение портфеля из Redis в БД"""
+
+        print(
+            "🔍 [DEBUG] Начало сохранения портфеля для session_token: "
+            f"{session_token}, user_id: {user_id}"
+        )
+
+        try:
+            # Получаем расчет из Redis по session_token
+            print(
+                "🔍 [DEBUG] Получение данных из Redis для ключа: "
+                f"user:{session_token}:portfolio"
+            )
+            portfolio_data = self.calculate_portfolio(session_token)
+
+            # Сохраняем в БД с authenticated user_id
+            print("🔍 [DEBUG] Начало сохранения в БД...")
+            portfolio = self.create_portfolio(portfolio_data, user_id, portfolio_name)
+
+            print(f"✅ [DEBUG] Портфель успешно сохранен в БД с ID: {portfolio.id}")
+
+            return {
+                "message": "Портфель успешно сохранен",
+                "portfolio_id": portfolio.id,
+                "portfolio_name": portfolio.portfolio_name,
+            }
+
+        except Exception as e:
+            print(f"❌ [DEBUG] Ошибка в save_portfolio_to_db: {str(e)}")
+            import traceback
+
+            print(f"❌ [DEBUG] Traceback: {traceback.format_exc()}")
+            raise
+
+    def convert_db_to_response(
+        self, portfolio: Portfolio
+    ) -> PortfolioCalculationResponse:
+        """Конвертация портфеля из БД в response схему"""
+
+        # Восстанавливаем композицию
+        composition = []
+        for comp in portfolio.portfolio_compositions:
+            assets = []
+            for alloc in comp.asset_allocations:
+                asset = alloc.asset
+                assets.append(
+                    AssetAllocationSchema(  # ← Используйте Schema
+                        name=asset.name,
+                        type=asset.type,
+                        ticker=asset.ticker,
+                        quantity=alloc.quantity,
+                        price=alloc.purchase_price,
+                        weight=alloc.target_weight,
+                        amount=alloc.quantity * alloc.purchase_price,
+                        expected_return=asset.yield_value,
+                    )
+                )
+
+            composition.append(
+                PortfolioComposition(
+                    asset_type=comp.asset_type,
+                    target_weight=comp.target_weight,
+                    actual_weight=comp.actual_weight,
+                    amount=comp.amount,
+                    assets=assets,
+                )
+            )
+
+        # Восстанавливаем пошаговый план
+        step_plan = None
+        if portfolio.step_by_step_plan:
+            steps = []
+            for plan_step in portfolio.step_by_step_plan.plan_steps:
+                # Сортируем действия по порядку
+                sorted_actions = sorted(
+                    plan_step.step_actions, key=lambda x: x.action_order
+                )
+                actions = [action.action_text for action in sorted_actions]
+
+                steps.append(
+                    PlanStep(
+                        step_number=plan_step.step_number,
+                        title=plan_step.title,
+                        description=plan_step.description,
+                        actions=actions,
+                    )
+                )
+
+            step_plan = StepByStepPlan(
+                steps=steps,
+                generated_at=portfolio.step_by_step_plan.generated_at.isoformat(),
+                total_steps=portfolio.step_by_step_plan.total_steps,
+            )
+
+        # Восстанавливаем рекомендацию
+        recommendation = PortfolioRecommendation(
+            target_amount=portfolio.target_amount,
+            initial_capital=portfolio.initial_capital,
+            investment_term_months=portfolio.investment_term_months,
+            annual_inflation_rate=portfolio.annual_inflation_rate,
+            future_value_with_inflation=portfolio.future_value_with_inflation,
+            risk_profile=portfolio.risk_profile,
+            time_horizon=portfolio.time_horizon,
+            smart_goal=portfolio.smart_goal,
+            total_investment=portfolio.total_investment,
+            expected_portfolio_return=portfolio.expected_portfolio_return,
+            composition=composition,
+            monthly_payment_detail=MonthlyPaymentDetail(
+                monthly_payment=portfolio.monthly_payment.monthly_payment,
+                future_capital=portfolio.monthly_payment.future_capital,
+                total_months=portfolio.monthly_payment.total_months,
+                monthly_rate=portfolio.monthly_payment.monthly_rate,
+                annuity_factor=portfolio.monthly_payment.annuity_factor,
+            ),
+            step_by_step_plan=step_plan,
+        )
+
+        return PortfolioCalculationResponse(
+            target_amount=portfolio.target_amount,
+            initial_capital=portfolio.initial_capital,
+            investment_term_months=portfolio.investment_term_months,
+            annual_inflation_rate=portfolio.annual_inflation_rate,
+            future_value_with_inflation=portfolio.future_value_with_inflation,
+            recommendation=recommendation,
+        )
+
+    def get_portfolio_for_analysis(
+        self, portfolio_id: int, user_id: int
+    ) -> PortfolioCalculationResponse:
+        """Получение портфеля для анализа с проверкой прав доступа"""
+
+        portfolio = self.portfolio_repo.get_portfolio_by_id(portfolio_id, user_id)
+
+        if not portfolio:
+            raise ValueError(f"Портфель {portfolio_id} не найден или нет доступа")
+
+        return self.convert_db_to_response(portfolio)

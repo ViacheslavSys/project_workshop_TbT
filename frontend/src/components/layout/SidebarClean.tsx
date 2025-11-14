@@ -1,35 +1,56 @@
-import { NavLink } from "react-router-dom";
+﻿import { NavLink } from "react-router-dom";
 import { useSelector } from "react-redux";
 import type { RootState } from "../../store/store";
+import Logo from "../Logo";
 
-type Props = { onNavigate?: () => void };
+type Props = {
+  onNavigate?: () => void;
+  className?: string;
+};
 
-export default function Sidebar({ onNavigate }: Props) {
+const NAV_ITEMS = [
+  { to: "/chat", label: "Чат с ассистентом", authOnly: null },
+  { to: "/portfolios", label: "Портфели", authOnly: null },
+  { to: "/account", label: "Мой профиль", authOnly: true },
+  { to: "/auth", label: "Вход / Регистрация", authOnly: false },
+] as const;
+
+export default function Sidebar({ onNavigate, className }: Props) {
   const { isAuthenticated, user } = useSelector((state: RootState) => state.auth);
 
-  const items = [
-    { to: "/chat", label: "ИИ-помощник", show: true },
-    { to: "/portfolios", label: "Портфели", show: true },
-    { to: "/account", label: "Мой профиль", show: Boolean(isAuthenticated) },
-    { to: "/auth", label: "Вход / Регистрация", show: !isAuthenticated },
-  ].filter((item) => item.show);
+  const displayName = user
+    ? [user.first_name, user.middle_name, user.last_name].filter(Boolean).join(" ")
+    : "";
 
-  const initials = (user?.full_name || user?.username || "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const initials =
+    (displayName || user?.username || "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "?";
+
+  const items = NAV_ITEMS.filter((item) => {
+    if (item.authOnly === null) return true;
+    return item.authOnly ? isAuthenticated : !isAuthenticated;
+  });
+
+  const baseClass =
+    "flex h-full md:h-screen w-64 flex-col border-r border-border bg-surface/90";
+  const classes = className ? `${baseClass} ${className}` : baseClass;
 
   return (
-    <div className="flex h-screen w-64 flex-col border-r border-border bg-surface/90">
+    <div className={classes}>
       <div className="flex h-16 items-center justify-between border-b border-border px-5">
-        <div className="text-lg font-semibold text-primary">InvestPro</div>
+        <Logo
+          labelClassName="text-lg font-semibold text-primary"
+          imageClassName="h-9 w-9 rounded-full object-cover"
+        />
         {isAuthenticated ? (
           <div className="flex items-center gap-2">
             <div className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-xs">
-              {initials || "?"}
+              {initials}
             </div>
           </div>
         ) : null}
@@ -53,9 +74,8 @@ export default function Sidebar({ onNavigate }: Props) {
       </nav>
 
       <div className="mt-auto border-t border-border p-4 text-xs text-muted">
-        © {new Date().getFullYear()} InvestPro
+        {"\u00A9"} {new Date().getFullYear()} TBT.AI
       </div>
     </div>
   );
 }
-

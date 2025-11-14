@@ -16,5 +16,13 @@ class Settings:
         f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
     )
 
+    SECRET_KEY: str = os.getenv(
+        "SECRET_KEY", "your-secret-key-change-this-in-production"
+    )
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
+        os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
+    )
+
 
 settings = Settings()
