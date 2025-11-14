@@ -1,10 +1,12 @@
 import { type PropsWithChildren, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { useTheme } from "../../hooks/useTheme";
 import Sidebar from "./SidebarClean";
 
 export default function Layout({ children }: PropsWithChildren) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -75,9 +77,33 @@ export default function Layout({ children }: PropsWithChildren) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h14M3 10h14M3 14h14" />
                 </svg>
               </button>
-              <div className="text-lg font-semibold text-primary">InvestPro</div>
             </div>
-            <div className="hidden text-xs text-muted sm:block">v0.1</div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface/80 px-3 py-2 text-xs font-medium text-text transition hover:bg-primary/10 focus-visible:outline-none"
+                aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+                aria-pressed={theme === "dark"}
+                onClick={toggleTheme}
+              >
+                {theme === "dark" ? (
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z"
+                    />
+                  </svg>
+                ) : (
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="12" cy="12" r="4" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5L19 19M3 12h2M19 12h2M5 19l1.5-1.5M17.5 6.5L19 5" />
+                  </svg>
+                )}
+                <span className="hidden sm:inline">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
+              </button>
+              <div className="hidden text-xs text-muted sm:block">v0.1</div>
+            </div>
           </div>
         </header>
 

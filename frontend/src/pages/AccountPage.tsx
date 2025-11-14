@@ -57,7 +57,7 @@ export default function AccountPage() {
           <div className="card-body text-center space-y-4">
             <p className="text-sm text-muted">
               Чтобы увидеть данные профиля, войдите в аккаунт или зарегистрируйтесь. После авторизации все сервисы
-              InvestPro станут доступны полностью.
+              TBT.AI станут доступны полностью.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3">
               <Link to="/auth" className="btn">
