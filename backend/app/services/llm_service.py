@@ -3,7 +3,7 @@ import os
 import time
 
 import dotenv
-from openai import OpenAI, APIError
+from openai import OpenAI
 
 from app.core.redis_cache import cache
 from app.schemas.chat import Message
@@ -126,28 +126,40 @@ def send_to_llm(user_id: str, user_message: str) -> str:
 
             return final_response
 
-        except APIError as e:
-            if e.status == 429:  # Rate limit exceeded
-                print(
-                    "Rate limit exceeded (429) on attempt "
-                    f"{attempt + 1}. Switching API key..."
-                )
+        except Exception as e:
+            # Универсальная обработка всех исключений
+            error_str = str(e).lower()
+
+            # Проверяем все возможные признаки rate limit
+            is_rate_limit = (
+                hasattr(e, 'status')
+                and e.status == 429  # Прямой статус 429
+                or '429' in error_str  # Код 429 в тексте ошибки
+                or 'rate limit' in error_str  # Упоминание rate limit
+                or 'ratelimit' in error_str  # Альтернативное написание
+                or 'too many requests' in error_str  # Другая формулировка
+                or 'exceeded' in error_str  # Общее указание на превышение
+            )
+
+            if is_rate_limit:
+                print(f"Rate limit detected on attempt {attempt + 1}. Error: {e}")
+                print("Switching API key...")
 
                 if attempt < max_retries - 1:
                     _switch_to_next_key()
-                    time.sleep(
-                        2 * (attempt + 1)
-                    )  # Увеличиваем задержку с каждой попыткой
+                    sleep_time = 2 * (attempt + 1)
+                    print(f"Waiting {sleep_time} seconds before retry...")
+                    time.sleep(sleep_time)
+                    continue  # Продолжаем с следующей попытки
                 else:
                     raise Exception(
-                        f"All {max_retries} API keys exhausted with rate limits"
+                        f"All {max_retries} API keys exhausted "
+                        f"with rate limits. Last error: {e}"
                     )
             else:
-                # Для других ошибок просто пробрасываем исключение
+                # Для других исключений просто пробрасываем
+                print(f"Non-rate-limit error: {e}")
                 raise e
-        except Exception as e:
-            # Для других исключений просто пробрасываем
-            raise e
 
     raise Exception(f"Failed after {max_retries} attempts")
 
