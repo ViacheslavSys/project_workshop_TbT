@@ -7,6 +7,7 @@ import {
   getAnonymousUserId,
   peekAnonymousUserId,
   persistAnonymousUserId,
+  isValidAnonymousUserId,
 } from "./utils/anonymousUser";
 
 type StoredIdentity = {
@@ -40,6 +41,11 @@ function readStoredIdentity(): StoredIdentity | null {
       return null;
     }
 
+    if (parsed.kind === "anonymous" && !isValidAnonymousUserId(parsed.user_id)) {
+      sessionStorage.removeItem(IDENTITY_STORAGE_KEY);
+      return null;
+    }
+
     return {
       user_id: parsed.user_id,
       kind: parsed.kind,
@@ -54,6 +60,10 @@ function readStoredIdentity(): StoredIdentity | null {
 }
 
 function persistIdentity(identity: StoredIdentity): void {
+  if (identity.kind === "anonymous" && !isValidAnonymousUserId(identity.user_id)) {
+    return;
+  }
+
   cachedIdentity = identity;
   if (typeof window === "undefined") {
     return;
@@ -67,8 +77,13 @@ function persistIdentity(identity: StoredIdentity): void {
 }
 
 function normalizeIdentity(identity: UserIdentityResponse): StoredIdentity {
+  const sanitizedUserId =
+    identity.kind === "anonymous" && !isValidAnonymousUserId(identity.user_id)
+      ? getAnonymousUserId()
+      : identity.user_id;
+
   return {
-    user_id: identity.user_id,
+    user_id: sanitizedUserId,
     kind: identity.kind,
     registered_user_id:
       typeof identity.registered_user_id === "number"
@@ -104,7 +119,11 @@ export function getCanonicalUserId(authUserId?: number | string | null): string 
     return identity.user_id;
   }
 
-  if (!authUserId && identity?.kind === "anonymous") {
+  if (
+    !authUserId &&
+    identity?.kind === "anonymous" &&
+    isValidAnonymousUserId(identity.user_id)
+  ) {
     return identity.user_id;
   }
 
@@ -131,7 +150,7 @@ export function getCanonicalUserId(authUserId?: number | string | null): string 
   }
 
   const storedAnon = peekAnonymousUserId();
-  if (storedAnon) {
+  if (storedAnon && isValidAnonymousUserId(storedAnon)) {
     const storedIdentity: StoredIdentity = {
       user_id: storedAnon,
       kind: "anonymous",
@@ -163,17 +182,17 @@ export async function syncUserIdentity(accessToken?: string | null): Promise<voi
   inFlight = (async () => {
     try {
       const candidateId =
-        cachedIdentity?.kind === "anonymous"
+        cachedIdentity?.kind === "anonymous" &&
+        isValidAnonymousUserId(cachedIdentity.user_id)
           ? cachedIdentity.user_id
           : peekAnonymousUserId();
       const identity = await fetchUserIdentity(accessToken, candidateId);
       const normalizedIdentity = normalizeIdentity(identity);
       persistIdentity(normalizedIdentity);
-      if (identity.kind === "anonymous") {
-        persistAnonymousUserId(identity.user_id);
+      if (normalizedIdentity.kind === "anonymous") {
+        persistAnonymousUserId(normalizedIdentity.user_id);
       }
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error("Failed to synchronize user identity", error);
     } finally {
       inFlight = null;

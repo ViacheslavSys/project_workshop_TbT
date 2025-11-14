@@ -1,4 +1,5 @@
 import { savePortfolioToDb } from "../api/portfolios";
+import { isValidAnonymousUserId } from "./utils/anonymousUser";
 
 export type PendingPortfolioSave = {
   sessionUserId: string;
@@ -18,11 +19,22 @@ function isPendingEntry(value: unknown): value is PendingPortfolioSave {
   }
 
   const candidate = value as Partial<PendingPortfolioSave>;
+  const normalizedId =
+    typeof candidate.sessionUserId === "string"
+      ? candidate.sessionUserId.trim()
+      : "";
+  const normalizedName =
+    typeof candidate.portfolioName === "string"
+      ? candidate.portfolioName.trim()
+      : "";
+  if (!isValidAnonymousUserId(normalizedId) || !normalizedName) {
+    return false;
+  }
+
+  candidate.sessionUserId = normalizedId;
+  candidate.portfolioName = normalizedName;
+
   return (
-    typeof candidate.sessionUserId === "string" &&
-    candidate.sessionUserId.trim().length > 0 &&
-    typeof candidate.portfolioName === "string" &&
-    candidate.portfolioName.trim().length > 0 &&
     typeof candidate.createdAt === "number" &&
     Number.isFinite(candidate.createdAt)
   );
@@ -69,7 +81,7 @@ function writeQueue(queue: PendingPortfolioSave[]): void {
 export function enqueuePendingPortfolioSave(entry: PendingPortfolioSave): void {
   const normalizedUserId = entry.sessionUserId.trim();
   const normalizedName = entry.portfolioName.trim();
-  if (!normalizedUserId || !normalizedName) {
+  if (!isValidAnonymousUserId(normalizedUserId) || !normalizedName) {
     return;
   }
 
@@ -109,8 +121,7 @@ function prependPendingPortfolioSave(entry: PendingPortfolioSave): void {
 
 async function runFlushCycle(token: string): Promise<number> {
   let processed = 0;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  for (;;) {
     const entry = shiftPendingPortfolioSave();
     if (!entry) {
       break;
