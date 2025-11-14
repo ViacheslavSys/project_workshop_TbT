@@ -1,6 +1,5 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   calculatePortfolio,
@@ -15,10 +14,18 @@ import {
   type RiskProfileResult,
   
 } from "../../api/chat";
+import { fetchUserPortfolios } from "../../api/portfolios";
+import {
+  enqueuePendingPortfolioSave,
+  flushPendingPortfolioSaves,
+} from "../../shared/pendingPortfolioSaves";
+import { MAX_SAVED_PORTFOLIOS } from "../../shared/portfolioLimits";
 import { getCanonicalUserId } from "../../shared/userIdentity";
+import { PortfolioLimitModal } from "../PortfolioLimitModal";
 import { type RootState } from "../../store/store";
 import {
   pushMessage,
+  resetChat,
   setStage,
   setTyping,
 } from "../../store/chatSlice";
@@ -160,12 +167,15 @@ function classNames(...cls: Array<string | false | null | undefined>) {
 
 export default function ChatWide() {
   const dispatch = useDispatch();
-  const { messages, typing, stage, isAuth, authUserId } = useSelector((state: RootState) => ({
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { messages, typing, stage, isAuth, authUserId, accessToken } = useSelector((state: RootState) => ({
     messages: state.chat.messages,
     typing: state.chat.typing,
     stage: state.chat.stage,
     isAuth: state.auth.isAuthenticated,
     authUserId: state.auth.user?.id,
+    accessToken: state.auth.accessToken,
   }));
 
   const persistedRiskState = useMemo(loadPersistedRiskState, []);
@@ -214,6 +224,9 @@ export default function ChatWide() {
   const [portfolioExplanation, setPortfolioExplanation] = useState<string | null>(null);
   const [portfolioExplanationError, setPortfolioExplanationError] = useState<string | null>(null);
   const [portfolioExplanationLoading, setPortfolioExplanationLoading] = useState(false);
+  const [portfolioCount, setPortfolioCount] = useState<number | null>(null);
+  const [portfolioCountLoading, setPortfolioCountLoading] = useState(false);
+  const [isPortfolioLimitModalOpen, setIsPortfolioLimitModalOpen] = useState(false);
 
   useEffect(() => {
     if (stage === "goals" && messages.length === 0) {
@@ -232,10 +245,30 @@ export default function ChatWide() {
   const portfolioRequestedRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recorderChunksRef = useRef<BlobPart[]>([]);
+  const refreshPortfolioCount = useCallback(async () => {
+    if (!isAuth || !accessToken) {
+      setPortfolioCount(null);
+      return;
+    }
+    setPortfolioCountLoading(true);
+    try {
+      const portfolios = await fetchUserPortfolios(accessToken);
+      setPortfolioCount(portfolios.length);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to load saved portfolios", err);
+    } finally {
+      setPortfolioCountLoading(false);
+    }
+  }, [isAuth, accessToken]);
 
   useEffect(() => {
     userIdRef.current = getCanonicalUserId(authUserId);
   }, [authUserId]);
+
+  useEffect(() => {
+    void refreshPortfolioCount();
+  }, [refreshPortfolioCount]);
 
   const resolveUserId = useCallback(() => {
     const resolved = userIdRef.current || getCanonicalUserId(authUserId);
@@ -272,6 +305,60 @@ export default function ChatWide() {
     appendMessage("ai", "message", INITIAL_BOT_MESSAGE);
     initialMessageRef.current = true;
   }, [messages, appendMessage]);
+
+  const handleStartNewPortfolio = useCallback(() => {
+    if (!isAuth) {
+      return;
+    }
+
+    if (portfolioCount !== null && portfolioCount >= MAX_SAVED_PORTFOLIOS) {
+      setIsPortfolioLimitModalOpen(true);
+      return;
+    }
+
+    setIsPortfolioLimitModalOpen(false);
+    persistRiskState(null);
+    setDraft("");
+    setError(null);
+    setIsRecording(false);
+    setPending(false);
+    setPortfolioExplanation(null);
+    setPortfolioExplanationError(null);
+    setPortfolioExplanationLoading(false);
+    setRiskQuestions([]);
+    setRiskAnswers({});
+    setCurrentRiskIndex(-1);
+    setClarifyingQuestions([]);
+    setClarificationAnswers({});
+    recorderChunksRef.current = [];
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      try {
+        recorder.stop();
+      } catch {
+        /* ignore stop errors */
+      }
+    }
+    portfolioRequestedRef.current = false;
+    goalSummaryHandledMessageIdRef.current = null;
+    initialMessageRef.current = false;
+    dispatch(resetChat());
+  }, [
+    dispatch,
+    isAuth,
+    portfolioCount,
+    setPending,
+  ]);
+
+  const shouldStartNewFromLocation = Boolean(
+    (location.state as { startNewPortfolio?: boolean } | null)?.startNewPortfolio,
+  );
+
+  useEffect(() => {
+    if (!shouldStartNewFromLocation) return;
+    handleStartNewPortfolio();
+    navigate(`${location.pathname}${location.search}`, { replace: true });
+  }, [handleStartNewPortfolio, location.pathname, location.search, navigate, shouldStartNewFromLocation]);
 
   const handleSend = async () => {
     const text = draft.trim();
@@ -328,6 +415,24 @@ export default function ChatWide() {
             "Детальная аналитика доступна на странице портфеля в разделе «Портфели».",
           );
         }
+
+        const normalizedUserId = userId.trim();
+        if (normalizedUserId) {
+          enqueuePendingPortfolioSave({
+            sessionUserId: normalizedUserId,
+            portfolioName: buildPendingPortfolioName(result.recommendation),
+            createdAt: Date.now(),
+          });
+
+          if (accessToken) {
+            void flushPendingPortfolioSaves(accessToken)
+              .then(() => refreshPortfolioCount())
+              .catch((err) => {
+                // eslint-disable-next-line no-console
+                console.error("Failed to flush pending portfolio saves", err);
+              });
+          }
+        }
       } else {
         appendMessage(
           "ai",
@@ -344,7 +449,7 @@ export default function ChatWide() {
       dispatch(setTyping(false));
       setPending(false);
     }
-  }, [appendMessage, dispatch, resolveUserId]);
+  }, [accessToken, appendMessage, dispatch, refreshPortfolioCount, resolveUserId]);
 
   const startRecording = async () => {
     if (isRecording) return;
@@ -689,12 +794,25 @@ export default function ChatWide() {
   };
 
   return (
+    <>
     <div className="card flex h-[calc(100dvh - 112px)] flex-col md:h-auto">
-      <div className="card-header flex items-center justify-between">
+      <div className="card-header flex flex-wrap items-center justify-between gap-3">
         <div>ИИ-помощник</div>
-        {typing ? (
-          <div className="text-xs text-muted">Ассистент думает…</div>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {typing ? (
+            <div className="text-xs text-muted">Ассистент думает?</div>
+          ) : null}
+          {isAuth ? (
+            <button
+              type="button"
+              className="btn-secondary whitespace-nowrap"
+              onClick={handleStartNewPortfolio}
+              disabled={portfolioCountLoading}
+            >
+              Создать новый портфель
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="card-body flex flex-1 min-h-0 flex-col">
         <div className="flex h-full min-h-0 flex-col gap-4 md:flex-row">
@@ -815,6 +933,11 @@ export default function ChatWide() {
         </div>
       </div>
     </div>
+    <PortfolioLimitModal
+      open={isPortfolioLimitModalOpen}
+      onClose={() => setIsPortfolioLimitModalOpen(false)}
+    />
+    </>
   );
 }
 
@@ -1119,16 +1242,12 @@ function PortfolioMessage({
     })} руб.`;
   const displayMoney = (value?: number | null, fractionDigits = 0) => formatMoney(value ?? 0, fractionDigits);
   const displayPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed(1)}%`;
-  const displayQuantity = (value?: number | null) =>
-    (value ?? 0).toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 
   const horizonYears = portfolio.investment_term_months / 12;
   const horizonLabels: Record<string, string> = { short: "Короткий", medium: "Средний", long: "Долгий" };
   const riskLabels: Record<string, string> = { conservative: "Консервативный", moderate: "Умеренный", aggressive: "Агрессивный" };
   const horizonLabel = horizonLabels[portfolio.time_horizon] ?? portfolio.time_horizon;
   const riskLabel = riskLabels[portfolio.risk_profile] ?? portfolio.risk_profile;
-  const composition = Array.isArray(portfolio.composition) ? portfolio.composition : [];
-  const restricted = !isAuth;
 
   return (
     <div className="w-full max-w-[720px] overflow-hidden rounded-xl border border-border bg-white/5 text-text shadow-sm">
@@ -1138,10 +1257,12 @@ function PortfolioMessage({
       </div>
 
       <div className="space-y-4 px-4 py-4 text-sm">
-        <div>
-          <div className="text-xs uppercase text-muted">SMART-цель</div>
-          <div className="mt-1 font-semibold">{portfolio.smart_goal}</div>
-        </div>
+        {portfolio.smart_goal ? (
+          <div>
+            <div className="text-xs uppercase text-muted">SMART-цель</div>
+            <div className="mt-1 font-semibold">{portfolio.smart_goal}</div>
+          </div>
+        ) : null}
 
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
@@ -1158,84 +1279,20 @@ function PortfolioMessage({
 
           <div className="grid gap-3 md:grid-cols-2">
             <SummaryItem label="Риск-профиль" value={riskLabel} />
-            <SummaryItem
-              label="Инвестиционный горизонт"
-              value={`${horizonLabel} · ${horizonYears.toFixed(1)} года`}
-            />
+            <SummaryItem label="Инвестиционный горизонт" value={`${horizonLabel} · ${horizonYears.toFixed(1)} года`} />
           </div>
+        </div>
 
-        {composition.length ? (
-          <RestrictedPortfolioContent restricted={restricted}>
-            <div className="space-y-3">
-              <div className="text-xs uppercase text-muted">Структура портфеля</div>
-              {composition.map((block) => {
-                const assets = Array.isArray(block.assets) ? block.assets : [];
-                return (
-                  <div key={block.asset_type} className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs text-muted">Класс активов</div>
-                        <div className="text-sm font-semibold text-text">{block.asset_type}</div>
-                      </div>
-                      <div className="text-xs text-muted">
-                        <div>Доля: {displayPercent(block.target_weight)}</div>
-                        <div>Стоимость: {displayMoney(block.amount)}</div>
-                      </div>
-                    </div>
-
-                    {assets.length ? (
-                      <div className="overflow-hidden rounded-md border border-white/10">
-                        <div className="max-w-full overflow-x-auto">
-                          <table className="min-w-[520px] w-full text-xs md:text-sm">
-                            <thead className="bg-white/5 text-xs uppercase tracking-wide text-muted">
-                              <tr>
-                                <th className="px-3 py-2 text-left font-semibold">Название</th>
-                                <th className="px-3 py-2 text-left font-semibold">Тикер</th>
-                                <th className="px-3 py-2 text-right font-semibold">Кол-во</th>
-                                <th className="px-3 py-2 text-right font-semibold">Цена</th>
-                                <th className="px-3 py-2 text-right font-semibold">Стоимость</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {assets.map((asset, idx) => (
-                                <tr
-                                  key={`${asset.ticker || asset.name}-${idx}`}
-                                  className={classNames(
-                                    "bg-transparent text-text",
-                                    idx !== 0 ? "border-t border-white/10" : undefined,
-                                  )}
-                                >
-                                  <td className="px-3 py-2">{asset.name || "—"}</td>
-                                  <td className="px-3 py-2 text-muted">{asset.ticker || "—"}</td>
-                                  <td className="px-3 py-2 text-right">{displayQuantity(asset.quantity)}</td>
-                                  <td className="px-3 py-2 text-right">{displayMoney(asset.price, 2)}</td>
-                                  <td className="px-3 py-2 text-right">{displayMoney(asset.amount)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-muted">Нет данных по активам.</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </RestrictedPortfolioContent>
-        ) : null}
-
-        {isAuth ? (
-          <div className="rounded-lg bg-white/5 px-4 py-3 text-xs text-muted">
-            Вы можете сохранить рекомендацию во вкладке «Портфели», чтобы отслеживать прогресс.
-            <div className="pt-2">
-              <Link to="/portfolios" className="btn-secondary">
-                Открыть мои портфели
-              </Link>
-            </div>
-          </div>
-        ) : null}
+        <div className="pt-2">
+          {isAuth ? (
+            <Link to="/portfolios" className="btn w-full md:w-auto">
+              Перейти к детальной аналитике
+            </Link>
+          ) : (
+            <Link to="/auth" className="btn w-full md:w-auto">
+              Зарегистрируйтесь, чтобы сохранить и просмотреть портфель
+            </Link>
+          )}
         </div>
       </div>
     </div>
@@ -1251,33 +1308,35 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-function RestrictedPortfolioContent({
-  children,
-  restricted,
-}: {
-  children: ReactNode;
-  restricted: boolean;
-}) {
-  if (!restricted) {
-    return <>{children}</>;
+function buildPendingPortfolioName(
+  portfolio?: PortfolioRecommendation | null,
+): string {
+  const fallbackName = "Инвестпортфель";
+  if (!portfolio) {
+    return fallbackName;
   }
 
-  return (
-    <div className="relative">
-      <div className="pointer-events-none select-none blur-md" aria-hidden="true">
-        {children}
-      </div>
-      <div className="pointer-events-none absolute inset-0 rounded-2xl border border-dashed border-border/70 bg-bg/80 backdrop-blur" />
-      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-4 py-8 text-center">
-        <p className="text-sm font-semibold text-text">
-          Структура портфеля доступна только зарегистрированным пользователям.
-        </p>
-        <Link to="/auth" className="btn">
-          Зарегистрируйтесь, чтобы сохранить и посмотреть результат
-        </Link>
-      </div>
-    </div>
-  );
+  const smartGoal =
+    typeof portfolio.smart_goal === "string"
+      ? portfolio.smart_goal.trim().replace(/\s+/g, " ")
+      : "";
+  if (smartGoal) {
+    return smartGoal.length > 120 ? `${smartGoal.slice(0, 117)}...` : smartGoal;
+  }
+
+  const riskLabels: Record<string, string> = {
+    conservative: "Консервативный",
+    moderate: "Умеренный",
+    aggressive: "Агрессивный",
+  };
+
+  const riskKey =
+    typeof portfolio.risk_profile === "string"
+      ? portfolio.risk_profile.trim().toLowerCase()
+      : "";
+  const riskLabel = riskKey ? riskLabels[riskKey] ?? portfolio.risk_profile : "";
+
+  return riskLabel ? `${fallbackName} - ${riskLabel}` : fallbackName;
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -1405,4 +1464,3 @@ function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
 
   return arrayBuffer;
 }
-

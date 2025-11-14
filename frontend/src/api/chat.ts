@@ -159,6 +159,19 @@ export type PortfolioComposition = {
   assets: PortfolioAssetAllocation[];
 };
 
+export type PlanStep = {
+  step_number: number;
+  title: string;
+  description: string;
+  actions: string[];
+};
+
+export type StepByStepPlan = {
+  steps: PlanStep[];
+  generated_at: string;
+  total_steps: number;
+};
+
 export type PortfolioRecommendation = {
   portfolio_id?: string | number;
   id?: string | number;
@@ -176,6 +189,7 @@ export type PortfolioRecommendation = {
   expected_portfolio_return: number;
   composition: PortfolioComposition[];
   monthly_payment_detail: MonthlyPaymentDetail;
+  step_by_step_plan?: StepByStepPlan | null;
 };
 
 export type PortfolioCalculationResponse = {
@@ -202,13 +216,17 @@ export async function calculatePortfolio(userId: string) {
   return handleResponse<PortfolioCalculationResponse>(res);
 }
 
-export async function fetchPortfolioAnalysis(userId: string) {
+export async function fetchPortfolioAnalysis(
+  token: string,
+  portfolioId: string | number,
+) {
   const res = await fetch(buildUrl("/portfolios/analyze"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ user_id: userId }),
+    body: JSON.stringify({ portfolio_id: portfolioId }),
   });
   const data = await handleResponse<PortfolioAnalysisResponse>(res); // Исправлено с PortfolioAnalysisReponse на PortfolioAnalysisResponse
   return data.analysis;

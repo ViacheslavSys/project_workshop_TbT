@@ -1,37 +1,48 @@
 const STORAGE_KEY = "anonymous_user_id";
+const NUMERIC_ID_REGEX = /^\d+$/;
+
+export function isValidAnonymousUserId(value: unknown): value is string {
+  return typeof value === "string" && NUMERIC_ID_REGEX.test(value);
+}
+
+function getCrypto(): Crypto | undefined {
+  if (typeof globalThis !== "object") {
+    return undefined;
+  }
+
+  return (globalThis as { crypto?: Crypto }).crypto;
+}
+
+function randomDigits(length: number, cryptoObj?: Crypto): string {
+  if (cryptoObj?.getRandomValues) {
+    const buffer = new Uint32Array(length);
+    cryptoObj.getRandomValues(buffer);
+    return Array.from(buffer, (value) => String(value % 10)).join("");
+  }
+
+  let digits = "";
+  for (let i = 0; i < length; i += 1) {
+    digits += Math.floor(Math.random() * 10).toString();
+  }
+  return digits;
+}
 
 function generateAnonymousId() {
-  const cryptoObj =
-    typeof globalThis === "object"
-      ? (globalThis as { crypto?: Crypto }).crypto
-      : undefined;
-
-  if (cryptoObj?.getRandomValues) {
-    const bytes = new Uint8Array(16);
-    cryptoObj.getRandomValues(bytes);
-    const hex = Array.from(bytes)
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-    return `anon_${hex}`;
-  }
-
-  if (typeof cryptoObj?.randomUUID === "function") {
-    return `anon_${cryptoObj.randomUUID().replace(/-/g, "")}`;
-  }
-
-  let fallback = "";
-  for (let i = 0; i < 32; i += 1) {
-    fallback += Math.floor(Math.random() * 16).toString(16);
-  }
-  return `anon_${fallback}`;
+  const cryptoObj = getCrypto();
+  const timestampPart = Date.now().toString(); // millisecond precision keeps order
+  const randomPart = randomDigits(6, cryptoObj); // add randomness for concurrency
+  return `${timestampPart}${randomPart}`;
 }
 
 function readSessionValue(): string | null {
   if (typeof window === "undefined") return null;
   try {
     const existingSession = sessionStorage.getItem(STORAGE_KEY);
-    if (existingSession && typeof existingSession === "string") {
+    if (isValidAnonymousUserId(existingSession)) {
       return existingSession;
+    }
+    if (existingSession) {
+      sessionStorage.removeItem(STORAGE_KEY);
     }
   } catch {
     /* ignore */
@@ -43,14 +54,20 @@ function readLegacyValue(): string | null {
   if (typeof window === "undefined") return null;
   try {
     const legacy = localStorage.getItem(STORAGE_KEY);
-    return typeof legacy === "string" ? legacy : null;
+    if (isValidAnonymousUserId(legacy)) {
+      return legacy;
+    }
+    if (legacy) {
+      localStorage.removeItem(STORAGE_KEY);
+    }
   } catch {
-    return null;
+    /* ignore */
   }
+  return null;
 }
 
 function writeSessionValue(id: string) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || !isValidAnonymousUserId(id)) return;
   try {
     sessionStorage.setItem(STORAGE_KEY, id);
   } catch {
@@ -59,6 +76,10 @@ function writeSessionValue(id: string) {
 }
 
 export function persistAnonymousUserId(id: string): void {
+  if (!isValidAnonymousUserId(id)) {
+    resetAnonymousUserId();
+    return;
+  }
   writeSessionValue(id);
   if (typeof window === "undefined") return;
   try {

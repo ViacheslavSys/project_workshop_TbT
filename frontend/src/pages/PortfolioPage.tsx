@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { PortfolioRecommendation } from "../api/chat";
-import { calculatePortfolio } from "../api/chat";
-import { useAppSelector } from "../store/hooks";
-
-const MAX_VISIBLE_PORTFOLIOS = 3;
+import type { PortfolioSummary } from "../api/portfolios";
+import { fetchUserPortfolios } from "../api/portfolios";
+import { PortfolioLimitModal } from "../components/PortfolioLimitModal";
+import { MAX_SAVED_PORTFOLIOS } from "../shared/portfolioLimits";
+import { resetChat } from "../store/chatSlice";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
 
 const riskLabels: Record<string, string> = {
   conservative: "Консервативный",
@@ -12,22 +13,53 @@ const riskLabels: Record<string, string> = {
   aggressive: "Агрессивный",
 };
 
-const horizonLabels: Record<string, string> = {
-  short: "Краткосрочный",
-  medium: "Среднесрочный",
-  long: "Долгосрочный",
+const formatMoney = (value?: number | null) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "—";
+  }
+  return `${value.toLocaleString("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })} ₽`;
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) {
+    return "—";
+  }
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
+    return "—";
+  }
+  return new Date(timestamp).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const getRiskLabel = (value?: string | null) => {
+  if (!value) {
+    return "—";
+  }
+  const normalized = value.trim().toLowerCase();
+  return riskLabels[normalized] ?? value;
 };
 
 export default function PortfolioPage() {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAppSelector((state) => state.auth);
-  const userId = user?.id ? String(user.id) : null;
-  const [portfolios, setPortfolios] = useState<PortfolioRecommendation[]>([]);
+  const dispatch = useAppDispatch();
+  const { isAuthenticated, accessToken } = useAppSelector((state) => ({
+    isAuthenticated: state.auth.isAuthenticated,
+    accessToken: state.auth.accessToken,
+  }));
+  const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLimitModalOpen, setLimitModalOpen] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated || !userId) {
+    if (!isAuthenticated || !accessToken) {
       setPortfolios([]);
       setError(null);
       setLoading(false);
@@ -38,21 +70,10 @@ export default function PortfolioPage() {
     setLoading(true);
     setError(null);
 
-    calculatePortfolio(userId)
-      .then((response) => {
+    fetchUserPortfolios(accessToken)
+      .then((items) => {
         if (!active) return;
-        const recommendationPayload =
-          response.recommendation as
-            | PortfolioRecommendation
-            | PortfolioRecommendation[]
-            | null
-            | undefined;
-        const next = Array.isArray(recommendationPayload)
-          ? recommendationPayload
-          : recommendationPayload
-            ? [recommendationPayload]
-            : [];
-        setPortfolios(next);
+        setPortfolios(items);
       })
       .catch((err) => {
         if (!active) return;
@@ -72,50 +93,87 @@ export default function PortfolioPage() {
     return () => {
       active = false;
     };
-  }, [isAuthenticated, userId]);
+  }, [isAuthenticated, accessToken]);
 
-  const visiblePortfolios = useMemo(
-    () => portfolios.slice(0, MAX_VISIBLE_PORTFOLIOS),
-    [portfolios],
-  );
-
-  const handleCardClick = (portfolio: PortfolioRecommendation, index: number) => {
-    const portfolioId =
-      (portfolio as { portfolio_id?: string | number; id?: string | number }).portfolio_id ??
-      (portfolio as { id?: string | number }).id ??
-      `${index}`;
-
-    navigate(`/portfolios/${portfolioId}`, {
+  const handleCardClick = (portfolio: PortfolioSummary) => {
+    navigate(`/portfolios/${portfolio.id}`, {
       state: {
-        portfolio,
+        summary: portfolio,
         origin: "portfolio-list",
       },
     });
   };
 
-  if (!isAuthenticated || !userId) {
-    return <PortfolioEmptyState />;
+  const handleCreatePortfolio = () => {
+    if (loading) {
+      return;
+    }
+    if (portfolios.length >= MAX_SAVED_PORTFOLIOS) {
+      setLimitModalOpen(true);
+      return;
+    }
+    dispatch(resetChat());
+    navigate("/chat", { state: { startNewPortfolio: true } });
+  };
+
+  const limitModal = (
+    <PortfolioLimitModal
+      open={isLimitModalOpen}
+      onClose={() => setLimitModalOpen(false)}
+    />
+  );
+
+  if (!isAuthenticated || !accessToken) {
+    return (
+      <>
+        <PortfolioEmptyState />
+        {limitModal}
+      </>
+    );
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-muted">
-        Собираем ваши инвестиционные рекомендации...
-      </div>
+      <>
+        <div className="flex min-h-[50vh] items-center justify-center text-muted">
+          Загружаем ваши портфели...
+        </div>
+        {limitModal}
+      </>
     );
   }
 
-  if (!visiblePortfolios.length) {
-    return <PortfolioEmptyState error={error} isAuthenticated />;
+  if (!portfolios.length) {
+    return (
+      <>
+        <PortfolioEmptyState
+          error={error}
+          isAuthenticated
+          onCreatePortfolio={handleCreatePortfolio}
+        />
+        {limitModal}
+      </>
+    );
   }
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">Ваши портфели</h1>
-        <p className="text-sm text-muted">
-          Мы сохранили свежие рекомендации — выберите любой портфель, чтобы посмотреть детали и расчёты.
-        </p>
+      <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Ваши портфели</h1>
+          <p className="text-sm text-muted">
+            Мы нашли сохранённые рекомендации — выберите портфель, чтобы открыть
+            подробный состав и расчёты.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn-secondary w-full whitespace-nowrap md:w-auto"
+          onClick={handleCreatePortfolio}
+          disabled={loading}
+        >
+          Создать новый портфель
+        </button>
       </header>
 
       {error ? (
@@ -125,15 +183,15 @@ export default function PortfolioPage() {
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {visiblePortfolios.map((portfolio, index) => (
-          <PortfolioMiniCard
-            key={`${portfolio.smart_goal}-${index}`}
+        {portfolios.map((portfolio) => (
+          <PortfolioSummaryCard
+            key={portfolio.id}
             portfolio={portfolio}
-            index={index}
-            onClick={() => handleCardClick(portfolio, index)}
+            onClick={() => handleCardClick(portfolio)}
           />
         ))}
       </div>
+      {limitModal}
     </div>
   );
 }
@@ -141,10 +199,17 @@ export default function PortfolioPage() {
 function PortfolioEmptyState({
   error,
   isAuthenticated = false,
+  onCreatePortfolio,
 }: {
   error?: string | null;
   isAuthenticated?: boolean;
+  onCreatePortfolio?: () => void;
 }) {
+  const description = isAuthenticated
+    ? "Пока нет сохранённых портфелей. Перейдите в чат-бот, чтобы сформировать первый портфель."
+    : "Авторизуйтесь и создайте первый портфель вместе с AI‑советником.";
+  const ctaLabel = isAuthenticated ? "Перейти в чат-бот" : "Создать портфель";
+
   return (
     <div className="mx-auto max-w-2xl">
       <div className="card text-center">
@@ -152,20 +217,27 @@ function PortfolioEmptyState({
           Пока нет сохранённых портфелей
         </div>
         <div className="card-body space-y-4 text-sm text-muted">
-          <p>
-            {isAuthenticated
-              ? "Пройдите короткий диалог с советником, и мы сформируем ваши персональные портфели."
-              : "Авторизуйтесь и создайте первый портфель вместе с AI‑советником."}
-          </p>
+          <p>{description}</p>
           {error ? (
             <div className="rounded-xl border border-danger/40 bg-danger/5 px-3 py-2 text-danger">
               {error}
             </div>
           ) : null}
           <div>
-            <Link to="/chat" className="btn">
-              Создать портфель
-            </Link>
+            {isAuthenticated ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={onCreatePortfolio}
+                disabled={!onCreatePortfolio}
+              >
+                Создать новый портфель
+              </button>
+            ) : (
+              <Link to="/chat" className="btn">
+                {ctaLabel}
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -173,38 +245,13 @@ function PortfolioEmptyState({
   );
 }
 
-function PortfolioMiniCard({
+function PortfolioSummaryCard({
   portfolio,
-  index,
   onClick,
 }: {
-  portfolio: PortfolioRecommendation;
-  index: number;
+  portfolio: PortfolioSummary;
   onClick: () => void;
 }) {
-  const horizonYears = (portfolio.investment_term_months ?? 0) / 12 || 0;
-  const riskLabel =
-    riskLabels[portfolio.risk_profile] ?? portfolio.risk_profile ?? "Не указан";
-  const horizonLabel =
-    horizonLabels[portfolio.time_horizon] ??
-    portfolio.time_horizon ??
-    "Не указан";
-
-  const ensureFiniteNumber = (value?: number | null) =>
-    typeof value === "number" && Number.isFinite(value) ? value : 0;
-
-  const formatMoney = (value?: number | null, digits = 0) =>
-    `${ensureFiniteNumber(value).toLocaleString("ru-RU", {
-      minimumFractionDigits: digits,
-      maximumFractionDigits: digits,
-    })} ₽`;
-
-  const formatPercent = (value?: number | null) =>
-    `${((value ?? 0) * 100).toFixed(1)}%`;
-
-  const monthlyPayment =
-    portfolio.monthly_payment_detail?.monthly_payment ?? 0;
-
   return (
     <button
       type="button"
@@ -213,14 +260,13 @@ function PortfolioMiniCard({
     >
       <div className="card-body space-y-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="text-xs uppercase text-muted">SMART-цель #{index + 1}</div>
+          <div>
+            <div className="text-xs uppercase text-muted">Портфель #{portfolio.id}</div>
+            <div className="text-lg font-semibold">{portfolio.portfolio_name}</div>
+          </div>
           <span className="rounded-full border border-border px-2 py-0.5 text-xs">
-            {riskLabel}
+            {getRiskLabel(portfolio.risk_profile)}
           </span>
-        </div>
-        <div>
-          <div className="text-sm text-muted">Цель</div>
-          <div className="text-lg font-semibold">{portfolio.smart_goal}</div>
         </div>
         <dl className="grid gap-3 text-sm">
           <div className="flex items-center justify-between">
@@ -228,20 +274,12 @@ function PortfolioMiniCard({
             <dd className="font-semibold">{formatMoney(portfolio.target_amount)}</dd>
           </div>
           <div className="flex items-center justify-between">
-            <dt className="text-muted">Ожидаемая доходность</dt>
-            <dd className="font-semibold">
-              {formatPercent(portfolio.expected_portfolio_return)}
-            </dd>
+            <dt className="text-muted">Стартовый капитал</dt>
+            <dd className="font-semibold">{formatMoney(portfolio.initial_capital)}</dd>
           </div>
           <div className="flex items-center justify-between">
-            <dt className="text-muted">Горизонт</dt>
-            <dd className="font-semibold">
-              {horizonLabel} · {horizonYears.toFixed(1)} г.
-            </dd>
-          </div>
-          <div className="flex items-center justify-between">
-            <dt className="text-muted">Ежемесячный взнос</dt>
-            <dd className="font-semibold">{formatMoney(monthlyPayment)}</dd>
+            <dt className="text-muted">Создан</dt>
+            <dd className="font-semibold">{formatDate(portfolio.created_at)}</dd>
           </div>
         </dl>
         <div className="flex items-center justify-between text-sm font-medium text-primary">

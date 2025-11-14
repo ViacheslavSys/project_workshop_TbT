@@ -2,6 +2,7 @@
 import type { ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { z } from "zod";
+import { flushPendingPortfolioSaves } from "../shared/pendingPortfolioSaves";
 import { loginUser, registerUser } from "../store/authSlice";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import userAgreementRaw from "../../administrative_documents/user_agreement.txt?raw";
@@ -268,12 +269,20 @@ export default function AuthPage() {
       return;
     }
     try {
-      await dispatch(
+      const payload = await dispatch(
         loginUser({
           username: parsed.data.username.trim(),
           password: parsed.data.password,
         }),
       ).unwrap();
+      if (payload.token) {
+        try {
+          await flushPendingPortfolioSaves(payload.token);
+        } catch (flushError) {
+          // eslint-disable-next-line no-console
+          console.error("Failed to save portfolio after login", flushError);
+        }
+      }
       navigate(redirectTo, { replace: true });
     } catch (error) {
       setFormError(getErrorMessage(error, "Не удалось выполнить вход"));
@@ -290,7 +299,7 @@ export default function AuthPage() {
       return;
     }
     try {
-      await dispatch(
+      const payload = await dispatch(
         registerUser({
           username: parsed.data.username.trim(),
           email: parsed.data.email.trim(),
@@ -301,6 +310,14 @@ export default function AuthPage() {
           birth_date: parsed.data.birthDate,
         }),
       ).unwrap();
+      if (payload.token) {
+        try {
+          await flushPendingPortfolioSaves(payload.token);
+        } catch (flushError) {
+          // eslint-disable-next-line no-console
+          console.error("Failed to save portfolio after registration", flushError);
+        }
+      }
       navigate(redirectTo, { replace: true });
     } catch (error) {
       setFormError(getErrorMessage(error, "Не удалось завершить регистрацию"));

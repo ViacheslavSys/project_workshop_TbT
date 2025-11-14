@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { to: "/chat", label: "Чат с ассистентом", authOnly: null },
   { to: "/portfolios", label: "Портфели", authOnly: null },
   { to: "/account", label: "Мой профиль", authOnly: true },
-  { to: "/auth", label: "Вход / регистрация", authOnly: false },
+  { to: "/auth", label: "Вход / Регистрация", authOnly: false },
 ] as const;
 
 export default function Sidebar({ onNavigate }: Props) {
