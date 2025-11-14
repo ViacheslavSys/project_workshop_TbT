@@ -1,174 +1,157 @@
-import React, { useMemo, useState } from "react";
-import InfoTip from "./InfoTip";
+type PortfolioAssetValue = number | undefined | null;
 
 export type PortfolioAssetRow = {
-  ticker: string;
-  name: string;
-  allocation: number; // 0..1
-  expectedReturn: number; // 0..1
-  risk: number; // 0..1 (volatility proxy)
-  value?: number; // absolute value in currency
-  dividendYield?: number; // 0..1
-  ytm?: number; // 0..1
-  sector?: string;
-  cycleFactor?: number; // -1..+1 or 0..2 depending on model
+  ticker?: string;
+  name?: string;
+  allocation?: number;
+  quantity?: number;
+  price?: number;
+  amount?: number;
 };
 
-type SortKey =
-  | "ticker"
-  | "name"
-  | "allocation"
-  | "expectedReturn"
-  | "incomeYield"
-  | "risk"
-  | "value"
-  | "cycleFactor";
+export type PortfolioAssetBlock = {
+  assetType: string;
+  targetWeight?: number | null;
+  amount?: number | null;
+  rows: PortfolioAssetRow[];
+};
 
 type Props = {
-  rows: PortfolioAssetRow[];
+  blocks: PortfolioAssetBlock[];
   title?: string;
 };
 
-function percent(n: number | undefined, digits = 1) {
-  if (n === undefined || Number.isNaN(n)) return "—";
-  return `${(n * 100).toFixed(digits)}%`;
-}
+const toFiniteNumber = (value?: PortfolioAssetValue) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
 
-function money(n: number | undefined) {
-  if (n === undefined || Number.isNaN(n)) return "—";
-  return `$${Math.round(n).toLocaleString()}`;
-}
+const formatMoney = (value?: PortfolioAssetValue, fractionDigits = 0) => {
+  const numericValue = toFiniteNumber(value);
+  return `${numericValue.toLocaleString("ru-RU", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  })} ₽`;
+};
 
-function SortArrow({ dir }: { dir: "asc" | "desc" }) {
-  return <span className="ml-1 text-xs opacity-70">{dir === "asc" ? "▲" : "▼"}</span>;
-}
+const formatQuantity = (value?: PortfolioAssetValue) => {
+  const numericValue = toFiniteNumber(value);
+  return numericValue.toLocaleString("ru-RU", {
+    maximumFractionDigits: numericValue < 1 ? 4 : 2,
+  });
+};
 
-export default function PortfolioAssetsTable({ rows, title = "Состав портфеля" }: Props) {
-  const [sortKey, setSortKey] = useState<SortKey>("allocation");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+const formatPercent = (value?: PortfolioAssetValue) =>
+  `${(toFiniteNumber(value) * 100).toFixed(1)}%`;
 
-  const data = useMemo(() => {
-    const withDerived = rows.map((r) => ({
-      ...r,
-      incomeYield: r.dividendYield ?? r.ytm ?? 0,
-    }));
-    const sorted = [...withDerived].sort((a: any, b: any) => {
-      const av = (a as any)[sortKey] ?? 0;
-      const bv = (b as any)[sortKey] ?? 0;
-      if (typeof av === "string" && typeof bv === "string") {
-        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      }
-      const diff = (Number(av) || 0) - (Number(bv) || 0);
-      return sortDir === "asc" ? diff : -diff;
-    });
-    return sorted;
-  }, [rows, sortKey, sortDir]);
+const classNames = (...values: Array<string | false | null | undefined>) =>
+  values.filter(Boolean).join(" ");
 
-  const requestSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      const defaultDir: "asc" | "desc" = key === "ticker" || key === "name" ? "asc" : "desc";
-      setSortDir(defaultDir);
-    }
-  };
-
-  const Th = ({ k, children, numeric = false, info }: { k: SortKey; children: React.ReactNode; numeric?: boolean; info?: React.ReactNode }) => (
-    <th
-      scope="col"
-      className={`px-3 py-2 text-xs font-medium ${numeric ? "text-right" : "text-left"} text-muted cursor-pointer select-none hover:text-text`}
-      onClick={() => requestSort(k)}
-    >
-      <span className="inline-flex items-center">
-        {children}
-        {sortKey === k ? <SortArrow dir={sortDir} /> : null}
-        {info ? <InfoTip title={String(children)}>{info}</InfoTip> : null}
-      </span>
-    </th>
-  );
-
-  // Color helpers
-  const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
-  const colorFor = (v: number, min: number, max: number, invert = false) => {
-    const t = clamp((v - min) / (max - min || 1), 0, 1);
-    const p = invert ? 1 - t : t;
-    const hue = 120 * p; // 0 red -> 120 green
-    return `hsl(${hue} 70% 55%)`;
-  };
-
+export default function PortfolioAssetsTable({
+  blocks,
+  title = "Состав портфеля",
+}: Props) {
   return (
-    <div className="card">
-      <div className="card-header">{title}</div>
-      <div className="card-body p-0 overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="border-b border-border">
-            <tr className="text-muted">
-              <Th k="ticker">Тикер</Th>
-              <Th k="name">Актив</Th>
-              <Th k="allocation" numeric info={<>
-                Доля актива в портфеле. Сумма по всем активам ≈ 100%.
-              </>}>
-                Доля
-              </Th>
-              <Th k="expectedReturn" numeric info={<>
-                Прогнозируемая годовая доходность (ожидание), не гарантирована.
-              </>}>
-                Ожид. доходность
-              </Th>
-              <Th k="incomeYield" numeric info={<>
-                Дивидендная доходность (для акций) или доходность к погашению YTM (для облигаций).
-              </>}>
-                Дивиденды/YTM
-              </Th>
-              <Th k="risk" numeric info={<>
-                Оценка риска/волатильности. Ниже — лучше (меньше колебаний).
-              </>}>
-                Риск (волат.)
-              </Th>
-              <Th k="cycleFactor" numeric info={<>
-                Фактор экономического цикла для актива (модельная оценка).
-              </>}>
-                Цикл
-              </Th>
-              <Th k="value" numeric info={<>
-                Оценочная сумма вложений в актив при текущей стоимости портфеля.
-              </>}>
-                Сумма
-              </Th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((r) => (
-              <tr key={r.ticker} className="border-b border-border/60 hover:bg-white/5">
-                <td className="px-3 py-2 font-mono">{r.ticker}</td>
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <div className="text-text">{r.name}</div>
-                    {r.sector ? <div className="text-xs text-muted">({r.sector})</div> : null}
-                  </div>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  <span style={{ color: colorFor(r.allocation ?? 0, 0, 0.40) }}>{percent(r.allocation)}</span>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  <span style={{ color: colorFor(r.expectedReturn ?? 0, 0, 0.20) }}>{percent(r.expectedReturn)}</span>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  <span style={{ color: colorFor((r as any).incomeYield ?? (r.dividendYield ?? r.ytm) ?? 0, 0, 0.08) }}>
-                    {percent(r.dividendYield ?? r.ytm)}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  <span style={{ color: colorFor(r.risk ?? 0, 0, 0.35, true) }}>{percent(r.risk)}</span>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{r.cycleFactor === undefined ? "—" : r.cycleFactor.toFixed(2)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{money(r.value)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <section className="card">
+      <div className="card-header">
+        <div className="text-lg font-semibold">{title}</div>
       </div>
-    </div>
+      <div className="card-body space-y-4">
+        <div className="space-y-3">
+          {blocks.map((block) => {
+            const rows = Array.isArray(block.rows) ? block.rows : [];
+            const showWeight =
+              typeof block.targetWeight === "number" &&
+              Number.isFinite(block.targetWeight);
+            const showAmount =
+              typeof block.amount === "number" &&
+              Number.isFinite(block.amount);
+
+            return (
+              <div
+                key={block.assetType}
+                className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs text-muted">Класс активов</div>
+                    <div className="text-sm font-semibold text-text">
+                      {block.assetType || "—"}
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted text-right">
+                    {showWeight ? (
+                      <div>Доля: {formatPercent(block.targetWeight)}</div>
+                    ) : null}
+                    {showAmount ? (
+                      <div>Стоимость: {formatMoney(block.amount)}</div>
+                    ) : null}
+                  </div>
+                </div>
+
+                {rows.length ? (
+                  <div className="overflow-hidden rounded-md border border-white/10">
+                    <div className="max-w-full overflow-x-auto">
+                      <table className="min-w-[520px] w-full text-xs md:text-sm">
+                        <thead className="bg-white/5 text-xs uppercase tracking-wide text-muted">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold">
+                              Наименование
+                            </th>
+                            <th className="px-3 py-2 text-left font-semibold">
+                              Тикер
+                            </th>
+                            <th className="px-3 py-2 text-right font-semibold">
+                              Кол-во
+                            </th>
+                            <th className="px-3 py-2 text-right font-semibold">
+                              Цена
+                            </th>
+                            <th className="px-3 py-2 text-right font-semibold">
+                              Сумма
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((row, index) => (
+                            <tr
+                              key={`${row.ticker || row.name || index}-${index}`}
+                              className={classNames(
+                                "bg-transparent text-text",
+                                index !== 0
+                                  ? "border-t border-white/10"
+                                  : undefined,
+                              )}
+                            >
+                              <td className="px-3 py-2">
+                                {row.name || "—"}
+                              </td>
+                              <td className="px-3 py-2 text-muted">
+                                {row.ticker || "—"}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {formatQuantity(row.quantity)}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {formatMoney(row.price, 2)}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {formatMoney(row.amount)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted">
+                    Нет данных по активам.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }

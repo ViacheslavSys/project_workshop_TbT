@@ -6,7 +6,7 @@ import { fetchPortfolioAnalysis } from "../api/chat";
 import type { PortfolioSummary } from "../api/portfolios";
 import { fetchPortfolioById } from "../api/portfolios";
 import PortfolioAssetsTable, {
-  type PortfolioAssetRow,
+  type PortfolioAssetBlock,
 } from "../components/PortfolioAssetsTable";
 import MLReport from "../components/MLReport";
 import { useAppSelector } from "../store/hooks";
@@ -184,29 +184,35 @@ export default function PortfolioDetailPage() {
     }));
   }, [portfolio]);
 
-  const tableRows = useMemo<PortfolioAssetRow[]>(() => {
+  const assetBlocks = useMemo<PortfolioAssetBlock[]>(() => {
     if (!portfolio?.composition) return [];
 
     const totalAmount =
       portfolio.target_amount ?? portfolio.future_value_with_inflation ?? 0;
 
-    return portfolio.composition.flatMap((block) => {
+    return portfolio.composition.map((block) => {
       const assets = Array.isArray(block.assets) ? block.assets : [];
-      return assets.map((asset) => ({
-        ticker: asset.ticker || block.asset_type,
-        name: asset.name || block.asset_type,
-        allocation:
-          asset.weight ??
-          block.target_weight ??
-          (asset.amount && totalAmount
-            ? asset.amount / totalAmount
-            : 0),
-        expectedReturn: asset.expected_return ?? 0,
-        risk: block.target_weight ?? 0,
-        value:
-          asset.amount ??
-          (asset.weight ?? block.target_weight ?? 0) * totalAmount,
-      }));
+      return {
+        assetType: block.asset_type,
+        targetWeight: block.target_weight,
+        amount: block.amount,
+        rows: assets.map((asset) => ({
+          ticker: asset.ticker || block.asset_type,
+          name: asset.name || block.asset_type,
+          allocation:
+            asset.weight ??
+            block.target_weight ??
+            (asset.amount && totalAmount
+              ? asset.amount / totalAmount
+              : 0),
+          quantity:
+            typeof asset.quantity === "number" ? asset.quantity : undefined,
+          price: typeof asset.price === "number" ? asset.price : undefined,
+          amount:
+            asset.amount ??
+            (asset.weight ?? block.target_weight ?? 0) * totalAmount,
+        })),
+      };
     });
   }, [portfolio]);
 
@@ -395,8 +401,8 @@ export default function PortfolioDetailPage() {
             </div>
           </section>
 
-          {tableRows.length ? (
-            <PortfolioAssetsTable rows={tableRows} title="Рекомендуемые активы к покупке" />
+          {assetBlocks.length ? (
+            <PortfolioAssetsTable blocks={assetBlocks} title="Рекомендуемые активы к покупке" />
           ) : (
             <div className="card">
               <div className="card-body text-sm text-muted">
