@@ -151,9 +151,10 @@ export default function PortfolioDetailPage() {
   }, [accessToken, portfolioId]);
 
   useEffect(() => {
-    if (!accessToken || !portfolioId) return;
-    fetchAnalysis();
-  }, [accessToken, portfolioId, fetchAnalysis]);
+    setAnalysis("");
+    setAnalysisError(null);
+    setAnalysisLoading(false);
+  }, [portfolioId]);
 
   const allocationSummary = useMemo(() => {
     if (!portfolio?.composition) {
@@ -389,9 +390,9 @@ export default function PortfolioDetailPage() {
             type="button"
             className="tab"
             onClick={fetchAnalysis}
-            disabled={analysisLoading}
+            disabled={analysisLoading || !canViewFullDetails}
           >
-            {analysisLoading ? "Запрос..." : "Обновить объяснение"}
+            {analysisLoading ? "Запрашиваем..." : "Запросить объяснение"}
           </button>
         </div>
         {analysisError && !analysisLoading ? (
