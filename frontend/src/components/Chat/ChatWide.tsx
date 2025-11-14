@@ -1286,12 +1286,15 @@ function PortfolioMessage({
         <div className="pt-2">
           {isAuth ? (
             <Link to="/portfolios" className="btn w-full md:w-auto">
-              Перейти к детальной аналитике
+              Перейти к сохранённым портфелям
             </Link>
           ) : (
-            <Link to="/auth" className="btn w-full md:w-auto">
-              Зарегистрируйтесь, чтобы сохранить и просмотреть портфель
-            </Link>
+            <div className="space-y-3">
+              <Link to="/auth" className="btn w-full md:w-auto">
+                Зарегистрируйтесь, чтобы сохранить и просмотреть портфель
+              </Link>
+              <LockedPortfolioPreview />
+            </div>
           )}
         </div>
       </div>
@@ -1308,6 +1311,55 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+
+
+function LockedPortfolioPreview() {
+  const primaryCards = ["target", "capital", "term"];
+  const secondaryCards = ["risk", "allocation"];
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-dashed border-border/70 bg-white/5 p-4">
+      <div className="relative z-0 space-y-4" aria-hidden="true">
+        <div className="grid gap-3 md:grid-cols-3 blur-sm select-none">
+          {primaryCards.map((token) => (
+            <div key={token} className="rounded-lg border border-white/5 bg-white/5 p-3">
+              <div className="h-2 w-20 rounded-full bg-white/25" />
+              <div className="mt-3 h-6 rounded-md bg-white/40" />
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 blur-sm select-none">
+          {secondaryCards.map((token) => (
+            <div key={token} className="rounded-lg border border-white/5 bg-white/5 p-3 space-y-2">
+              <div className="h-2 w-28 rounded-full bg-white/25" />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="h-5 rounded bg-white/35" />
+                <div className="h-5 rounded bg-white/35" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-b from-bg/30 via-bg/60 to-bg/80 backdrop-blur-sm" aria-hidden="true" />
+      <div className="relative z-20 mt-4 flex flex-col items-center gap-2 text-center text-xs font-medium text-muted">
+        <svg
+          className="h-5 w-5 text-muted"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="3" y="11" width="18" height="10" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+        <p>Детальная аналитика доступна после регистрации</p>
+      </div>
+    </div>
+  );
+}
 function buildPendingPortfolioName(
   portfolio?: PortfolioRecommendation | null,
 ): string {
