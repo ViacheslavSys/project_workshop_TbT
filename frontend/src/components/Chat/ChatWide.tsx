@@ -1,5 +1,5 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   calculatePortfolio,
@@ -14,14 +14,18 @@ import {
   type RiskProfileResult,
   
 } from "../../api/chat";
+import { fetchUserPortfolios } from "../../api/portfolios";
 import {
   enqueuePendingPortfolioSave,
   flushPendingPortfolioSaves,
 } from "../../shared/pendingPortfolioSaves";
+import { MAX_SAVED_PORTFOLIOS } from "../../shared/portfolioLimits";
 import { getCanonicalUserId } from "../../shared/userIdentity";
+import { PortfolioLimitModal } from "../PortfolioLimitModal";
 import { type RootState } from "../../store/store";
 import {
   pushMessage,
+  resetChat,
   setStage,
   setTyping,
 } from "../../store/chatSlice";
@@ -163,6 +167,8 @@ function classNames(...cls: Array<string | false | null | undefined>) {
 
 export default function ChatWide() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { messages, typing, stage, isAuth, authUserId, accessToken } = useSelector((state: RootState) => ({
     messages: state.chat.messages,
     typing: state.chat.typing,
@@ -218,6 +224,9 @@ export default function ChatWide() {
   const [portfolioExplanation, setPortfolioExplanation] = useState<string | null>(null);
   const [portfolioExplanationError, setPortfolioExplanationError] = useState<string | null>(null);
   const [portfolioExplanationLoading, setPortfolioExplanationLoading] = useState(false);
+  const [portfolioCount, setPortfolioCount] = useState<number | null>(null);
+  const [portfolioCountLoading, setPortfolioCountLoading] = useState(false);
+  const [isPortfolioLimitModalOpen, setIsPortfolioLimitModalOpen] = useState(false);
 
   useEffect(() => {
     if (stage === "goals" && messages.length === 0) {
@@ -236,10 +245,30 @@ export default function ChatWide() {
   const portfolioRequestedRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recorderChunksRef = useRef<BlobPart[]>([]);
+  const refreshPortfolioCount = useCallback(async () => {
+    if (!isAuth || !accessToken) {
+      setPortfolioCount(null);
+      return;
+    }
+    setPortfolioCountLoading(true);
+    try {
+      const portfolios = await fetchUserPortfolios(accessToken);
+      setPortfolioCount(portfolios.length);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to load saved portfolios", err);
+    } finally {
+      setPortfolioCountLoading(false);
+    }
+  }, [isAuth, accessToken]);
 
   useEffect(() => {
     userIdRef.current = getCanonicalUserId(authUserId);
   }, [authUserId]);
+
+  useEffect(() => {
+    void refreshPortfolioCount();
+  }, [refreshPortfolioCount]);
 
   const resolveUserId = useCallback(() => {
     const resolved = userIdRef.current || getCanonicalUserId(authUserId);
@@ -276,6 +305,60 @@ export default function ChatWide() {
     appendMessage("ai", "message", INITIAL_BOT_MESSAGE);
     initialMessageRef.current = true;
   }, [messages, appendMessage]);
+
+  const handleStartNewPortfolio = useCallback(() => {
+    if (!isAuth) {
+      return;
+    }
+
+    if (portfolioCount !== null && portfolioCount >= MAX_SAVED_PORTFOLIOS) {
+      setIsPortfolioLimitModalOpen(true);
+      return;
+    }
+
+    setIsPortfolioLimitModalOpen(false);
+    persistRiskState(null);
+    setDraft("");
+    setError(null);
+    setIsRecording(false);
+    setPending(false);
+    setPortfolioExplanation(null);
+    setPortfolioExplanationError(null);
+    setPortfolioExplanationLoading(false);
+    setRiskQuestions([]);
+    setRiskAnswers({});
+    setCurrentRiskIndex(-1);
+    setClarifyingQuestions([]);
+    setClarificationAnswers({});
+    recorderChunksRef.current = [];
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      try {
+        recorder.stop();
+      } catch {
+        /* ignore stop errors */
+      }
+    }
+    portfolioRequestedRef.current = false;
+    goalSummaryHandledMessageIdRef.current = null;
+    initialMessageRef.current = false;
+    dispatch(resetChat());
+  }, [
+    dispatch,
+    isAuth,
+    portfolioCount,
+    setPending,
+  ]);
+
+  const shouldStartNewFromLocation = Boolean(
+    (location.state as { startNewPortfolio?: boolean } | null)?.startNewPortfolio,
+  );
+
+  useEffect(() => {
+    if (!shouldStartNewFromLocation) return;
+    handleStartNewPortfolio();
+    navigate(`${location.pathname}${location.search}`, { replace: true });
+  }, [handleStartNewPortfolio, location.pathname, location.search, navigate, shouldStartNewFromLocation]);
 
   const handleSend = async () => {
     const text = draft.trim();
@@ -342,10 +425,12 @@ export default function ChatWide() {
           });
 
           if (accessToken) {
-            void flushPendingPortfolioSaves(accessToken).catch((err) => {
-              // eslint-disable-next-line no-console
-              console.error("Failed to flush pending portfolio saves", err);
-            });
+            void flushPendingPortfolioSaves(accessToken)
+              .then(() => refreshPortfolioCount())
+              .catch((err) => {
+                // eslint-disable-next-line no-console
+                console.error("Failed to flush pending portfolio saves", err);
+              });
           }
         }
       } else {
@@ -364,7 +449,7 @@ export default function ChatWide() {
       dispatch(setTyping(false));
       setPending(false);
     }
-  }, [accessToken, appendMessage, dispatch, resolveUserId]);
+  }, [accessToken, appendMessage, dispatch, refreshPortfolioCount, resolveUserId]);
 
   const startRecording = async () => {
     if (isRecording) return;
@@ -709,12 +794,25 @@ export default function ChatWide() {
   };
 
   return (
+    <>
     <div className="card flex h-[calc(100dvh - 112px)] flex-col md:h-auto">
-      <div className="card-header flex items-center justify-between">
+      <div className="card-header flex flex-wrap items-center justify-between gap-3">
         <div>ИИ-помощник</div>
-        {typing ? (
-          <div className="text-xs text-muted">Ассистент думает…</div>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {typing ? (
+            <div className="text-xs text-muted">Ассистент думает?</div>
+          ) : null}
+          {isAuth ? (
+            <button
+              type="button"
+              className="btn-secondary whitespace-nowrap"
+              onClick={handleStartNewPortfolio}
+              disabled={portfolioCountLoading}
+            >
+              Создать новый портфель
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="card-body flex flex-1 min-h-0 flex-col">
         <div className="flex h-full min-h-0 flex-col gap-4 md:flex-row">
@@ -835,6 +933,11 @@ export default function ChatWide() {
         </div>
       </div>
     </div>
+    <PortfolioLimitModal
+      open={isPortfolioLimitModalOpen}
+      onClose={() => setIsPortfolioLimitModalOpen(false)}
+    />
+    </>
   );
 }
 
@@ -1361,4 +1464,3 @@ function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
 
   return arrayBuffer;
 }
-

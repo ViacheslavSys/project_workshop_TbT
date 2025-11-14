@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { PortfolioSummary } from "../api/portfolios";
 import { fetchUserPortfolios } from "../api/portfolios";
-import { useAppSelector } from "../store/hooks";
+import { PortfolioLimitModal } from "../components/PortfolioLimitModal";
+import { MAX_SAVED_PORTFOLIOS } from "../shared/portfolioLimits";
+import { resetChat } from "../store/chatSlice";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
 
 const riskLabels: Record<string, string> = {
   conservative: "Консервативный",
@@ -45,6 +48,7 @@ const getRiskLabel = (value?: string | null) => {
 
 export default function PortfolioPage() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const { isAuthenticated, accessToken } = useAppSelector((state) => ({
     isAuthenticated: state.auth.isAuthenticated,
     accessToken: state.auth.accessToken,
@@ -52,6 +56,7 @@ export default function PortfolioPage() {
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLimitModalOpen, setLimitModalOpen] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated || !accessToken) {
@@ -99,30 +104,76 @@ export default function PortfolioPage() {
     });
   };
 
+  const handleCreatePortfolio = () => {
+    if (loading) {
+      return;
+    }
+    if (portfolios.length >= MAX_SAVED_PORTFOLIOS) {
+      setLimitModalOpen(true);
+      return;
+    }
+    dispatch(resetChat());
+    navigate("/chat", { state: { startNewPortfolio: true } });
+  };
+
+  const limitModal = (
+    <PortfolioLimitModal
+      open={isLimitModalOpen}
+      onClose={() => setLimitModalOpen(false)}
+    />
+  );
+
   if (!isAuthenticated || !accessToken) {
-    return <PortfolioEmptyState />;
+    return (
+      <>
+        <PortfolioEmptyState />
+        {limitModal}
+      </>
+    );
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-muted">
-        Загружаем ваши портфели...
-      </div>
+      <>
+        <div className="flex min-h-[50vh] items-center justify-center text-muted">
+          Загружаем ваши портфели...
+        </div>
+        {limitModal}
+      </>
     );
   }
 
   if (!portfolios.length) {
-    return <PortfolioEmptyState error={error} isAuthenticated />;
+    return (
+      <>
+        <PortfolioEmptyState
+          error={error}
+          isAuthenticated
+          onCreatePortfolio={handleCreatePortfolio}
+        />
+        {limitModal}
+      </>
+    );
   }
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">Ваши портфели</h1>
-        <p className="text-sm text-muted">
-          Мы нашли сохранённые рекомендации — выберите портфель, чтобы открыть
-          подробный состав и расчёты.
-        </p>
+      <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Ваши портфели</h1>
+          <p className="text-sm text-muted">
+            Мы нашли сохранённые рекомендации — выберите портфель, чтобы открыть
+            подробный состав и расчёты.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn-secondary w-full whitespace-nowrap md:w-auto"
+          onClick={handleCreatePortfolio}
+          disabled={loading}
+        >
+          Создать новый портфель
+        </button>
       </header>
 
       {error ? (
@@ -140,6 +191,7 @@ export default function PortfolioPage() {
           />
         ))}
       </div>
+      {limitModal}
     </div>
   );
 }
@@ -147,9 +199,11 @@ export default function PortfolioPage() {
 function PortfolioEmptyState({
   error,
   isAuthenticated = false,
+  onCreatePortfolio,
 }: {
   error?: string | null;
   isAuthenticated?: boolean;
+  onCreatePortfolio?: () => void;
 }) {
   const description = isAuthenticated
     ? "Пока нет сохранённых портфелей. Перейдите в чат-бот, чтобы сформировать первый портфель."
@@ -170,9 +224,20 @@ function PortfolioEmptyState({
             </div>
           ) : null}
           <div>
-            <Link to="/chat" className="btn">
-              {ctaLabel}
-            </Link>
+            {isAuthenticated ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={onCreatePortfolio}
+                disabled={!onCreatePortfolio}
+              >
+                Создать новый портфель
+              </button>
+            ) : (
+              <Link to="/chat" className="btn">
+                {ctaLabel}
+              </Link>
+            )}
           </div>
         </div>
       </div>
