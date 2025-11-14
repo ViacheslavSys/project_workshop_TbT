@@ -322,7 +322,7 @@ function PortfolioSummaryCard({
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted">
               <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-              \u041f\u043e\u0440\u0442\u0444\u0435\u043b\u044c #{portfolio.id}
+              Портфель #{portfolio.id}
             </div>
             <div className="text-lg font-semibold leading-snug">{portfolio.portfolio_name}</div>
           </div>
@@ -344,7 +344,7 @@ function PortfolioSummaryCard({
           ))}
         </dl>
         <div className="flex items-center justify-between text-sm font-medium text-primary">
-          <span>\u0421\u043c\u043e\u0442\u0440\u0435\u0442\u044c \u0434\u0435\u0442\u0430\u043b\u0438</span>
+          <span>Смотреть детали</span>
           <svg
             className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
             viewBox="0 0 24 24"
