@@ -15,6 +15,10 @@ import {
   type RiskProfileResult,
   
 } from "../../api/chat";
+import {
+  enqueuePendingPortfolioSave,
+  flushPendingPortfolioSaves,
+} from "../../shared/pendingPortfolioSaves";
 import { getCanonicalUserId } from "../../shared/userIdentity";
 import { type RootState } from "../../store/store";
 import {
@@ -160,12 +164,13 @@ function classNames(...cls: Array<string | false | null | undefined>) {
 
 export default function ChatWide() {
   const dispatch = useDispatch();
-  const { messages, typing, stage, isAuth, authUserId } = useSelector((state: RootState) => ({
+  const { messages, typing, stage, isAuth, authUserId, accessToken } = useSelector((state: RootState) => ({
     messages: state.chat.messages,
     typing: state.chat.typing,
     stage: state.chat.stage,
     isAuth: state.auth.isAuthenticated,
     authUserId: state.auth.user?.id,
+    accessToken: state.auth.accessToken,
   }));
 
   const persistedRiskState = useMemo(loadPersistedRiskState, []);
@@ -328,6 +333,22 @@ export default function ChatWide() {
             "Детальная аналитика доступна на странице портфеля в разделе «Портфели».",
           );
         }
+
+        const normalizedUserId = userId.trim();
+        if (normalizedUserId) {
+          enqueuePendingPortfolioSave({
+            sessionUserId: normalizedUserId,
+            portfolioName: buildPendingPortfolioName(result.recommendation),
+            createdAt: Date.now(),
+          });
+
+          if (accessToken) {
+            void flushPendingPortfolioSaves(accessToken).catch((err) => {
+              // eslint-disable-next-line no-console
+              console.error("Failed to flush pending portfolio saves", err);
+            });
+          }
+        }
       } else {
         appendMessage(
           "ai",
@@ -344,7 +365,7 @@ export default function ChatWide() {
       dispatch(setTyping(false));
       setPending(false);
     }
-  }, [appendMessage, dispatch, resolveUserId]);
+  }, [accessToken, appendMessage, dispatch, resolveUserId]);
 
   const startRecording = async () => {
     if (isRecording) return;
@@ -1278,6 +1299,37 @@ function RestrictedPortfolioContent({
       </div>
     </div>
   );
+}
+
+function buildPendingPortfolioName(
+  portfolio?: PortfolioRecommendation | null,
+): string {
+  const fallbackName = "Инвестпортфель";
+  if (!portfolio) {
+    return fallbackName;
+  }
+
+  const smartGoal =
+    typeof portfolio.smart_goal === "string"
+      ? portfolio.smart_goal.trim().replace(/\s+/g, " ")
+      : "";
+  if (smartGoal) {
+    return smartGoal.length > 120 ? `${smartGoal.slice(0, 117)}...` : smartGoal;
+  }
+
+  const riskLabels: Record<string, string> = {
+    conservative: "Консервативный",
+    moderate: "Умеренный",
+    aggressive: "Агрессивный",
+  };
+
+  const riskKey =
+    typeof portfolio.risk_profile === "string"
+      ? portfolio.risk_profile.trim().toLowerCase()
+      : "";
+  const riskLabel = riskKey ? riskLabels[riskKey] ?? portfolio.risk_profile : "";
+
+  return riskLabel ? `${fallbackName} - ${riskLabel}` : fallbackName;
 }
 
 function blobToBase64(blob: Blob): Promise<string> {

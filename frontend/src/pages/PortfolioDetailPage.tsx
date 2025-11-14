@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import type { PortfolioRecommendation } from "../api/chat";
-import { calculatePortfolio, fetchPortfolioAnalysis } from "../api/chat";
+import { fetchPortfolioAnalysis } from "../api/chat";
+import type { PortfolioSummary } from "../api/portfolios";
+import { fetchPortfolioById } from "../api/portfolios";
 import PortfolioAssetsTable, {
   type PortfolioAssetRow,
 } from "../components/PortfolioAssetsTable";
@@ -11,6 +13,7 @@ import { useAppSelector } from "../store/hooks";
 
 type LocationState = {
   portfolio?: PortfolioRecommendation | null;
+  summary?: PortfolioSummary | null;
 };
 
 const reportFormulas = [
@@ -53,9 +56,11 @@ const formatPercent = (value?: number | null, digits = 1) =>
 export default function PortfolioDetailPage() {
   const params = useParams<{ id: string }>();
   const location = useLocation();
-  const { user, isAuthenticated } = useAppSelector((state) => state.auth);
-  const userId = user?.id ? String(user.id) : null;
-  const canViewFullDetails = Boolean(isAuthenticated && userId);
+  const { isAuthenticated, accessToken } = useAppSelector(
+    (state) => state.auth,
+  );
+  const canViewFullDetails = Boolean(isAuthenticated && accessToken);
+  const portfolioId = params.id;
 
   const locationState = (location.state as LocationState | null) ?? null;
   const initialPortfolio = locationState?.portfolio ?? null;
@@ -76,11 +81,11 @@ export default function PortfolioDetailPage() {
   }, [canViewFullDetails]);
 
   const fetchLatestPortfolio = useCallback(async () => {
-    if (!userId) return;
+    if (!accessToken || !portfolioId) return;
     setLoading(true);
     setError(null);
     try {
-      const response = await calculatePortfolio(userId);
+      const response = await fetchPortfolioById(accessToken, portfolioId);
       const recommendationPayload =
         response.recommendation as
           | PortfolioRecommendation
@@ -108,25 +113,30 @@ export default function PortfolioDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [accessToken, portfolioId]);
 
   useEffect(() => {
-    if (!initialPortfolio && isAuthenticated && userId) {
+    if (!initialPortfolio && canViewFullDetails && portfolioId) {
       fetchLatestPortfolio();
     }
-  }, [initialPortfolio, isAuthenticated, userId, fetchLatestPortfolio]);
+  }, [
+    initialPortfolio,
+    canViewFullDetails,
+    portfolioId,
+    fetchLatestPortfolio,
+  ]);
 
   const handleRefresh = useCallback(() => {
-    if (!userId) return;
+    if (!accessToken || !portfolioId) return;
     fetchLatestPortfolio();
-  }, [fetchLatestPortfolio, userId]);
+  }, [fetchLatestPortfolio, accessToken, portfolioId]);
 
   const fetchAnalysis = useCallback(async () => {
-    if (!userId) return;
+    if (!accessToken || !portfolioId) return;
     setAnalysisError(null);
     setAnalysisLoading(true);
     try {
-      const explanation = await fetchPortfolioAnalysis(userId);
+      const explanation = await fetchPortfolioAnalysis(accessToken, portfolioId);
       setAnalysis(explanation);
     } catch (err) {
       const message =
@@ -138,12 +148,12 @@ export default function PortfolioDetailPage() {
     } finally {
       setAnalysisLoading(false);
     }
-  }, [userId]);
+  }, [accessToken, portfolioId]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!accessToken || !portfolioId) return;
     fetchAnalysis();
-  }, [userId, fetchAnalysis]);
+  }, [accessToken, portfolioId, fetchAnalysis]);
 
   const allocationSummary = useMemo(() => {
     if (!portfolio?.composition) {
