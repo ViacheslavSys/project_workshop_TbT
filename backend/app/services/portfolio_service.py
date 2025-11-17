@@ -963,6 +963,16 @@ class PortfolioService:
                 total_steps=portfolio.step_by_step_plan.total_steps,
             )
 
+        analysis_text = None
+        if portfolio.calculation_explanations:
+            # Берем последний анализ (самый свежий)
+            latest_analysis = sorted(
+                portfolio.calculation_explanations,
+                key=lambda x: x.created_at,
+                reverse=True,
+            )[0]
+            analysis_text = latest_analysis.explanation_text
+
         # Восстанавливаем рекомендацию
         recommendation = PortfolioRecommendation(
             target_amount=portfolio.target_amount,
@@ -993,6 +1003,7 @@ class PortfolioService:
             annual_inflation_rate=portfolio.annual_inflation_rate,
             future_value_with_inflation=portfolio.future_value_with_inflation,
             recommendation=recommendation,
+            analysis=analysis_text,
         )
 
     def get_portfolio_for_analysis(
