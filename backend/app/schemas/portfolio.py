@@ -80,6 +80,7 @@ class PortfolioCalculationResponse(BaseModel):
     annual_inflation_rate: float
     future_value_with_inflation: float
     recommendation: Optional[PortfolioRecommendation]
+    analysis: Optional[str] = None
 
 
 class PortfolioAnalysisRequest(BaseModel):

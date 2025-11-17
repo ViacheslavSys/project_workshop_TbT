@@ -1,15 +1,16 @@
 from sqlalchemy import (
+    Boolean,
     Column,
+    DateTime,
+    Float,
+    ForeignKey,
     Integer,
     String,
-    Float,
     Text,
-    DateTime,
-    ForeignKey,
-    Boolean,
 )
-from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+
 from app.core.database import Base
 
 
@@ -54,6 +55,11 @@ class Portfolio(Base):
         "StepByStepPlan",
         back_populates="portfolio",
         uselist=False,
+        cascade="all, delete-orphan",
+    )
+    calculation_explanations = relationship(
+        "PortfolioCalculationExplanation",
+        back_populates="portfolio",
         cascade="all, delete-orphan",
     )
 
@@ -155,3 +161,15 @@ class StepAction(Base):
     action_order = Column(Integer, nullable=False)  # Порядок действий внутри шага
 
     plan_step = relationship("PlanStep", back_populates="step_actions")
+
+
+class PortfolioCalculationExplanation(Base):
+    __tablename__ = "portfolio_calculation_explanations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False)
+    explanation_text = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    portfolio = relationship("Portfolio", back_populates="calculation_explanations")
