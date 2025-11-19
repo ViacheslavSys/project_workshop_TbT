@@ -311,39 +311,37 @@ function PortfolioSummaryCard({
     <button
       type="button"
       onClick={onClick}
-      className="card group relative overflow-hidden text-left transition hover:-translate-y-0.5 hover:border-primary/60 focus-visible:-translate-y-0.5 focus-visible:border-primary focus-visible:outline-none"
+      className="card group relative flex h-full flex-col overflow-hidden text-left transition hover:-translate-y-0.5 hover:border-primary/60 focus-visible:-translate-y-0.5 focus-visible:border-primary focus-visible:outline-none"
     >
       <span
         className={`absolute inset-x-0 top-0 h-1 ${accentClass}`}
         aria-hidden="true"
       />
-      <div className="card-body space-y-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-              Портфель #{portfolio.id}
+      <div className="card-body flex flex-1 flex-col gap-5">
+        <div className="space-y-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <div className="text-lg font-semibold leading-snug">{portfolio.portfolio_name}</div>
             </div>
-            <div className="text-lg font-semibold leading-snug">{portfolio.portfolio_name}</div>
+            <span
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${badgeClass}`}
+            >
+              <span className={`h-2 w-2 rounded-full ${dotClass}`} aria-hidden="true" />
+              {riskLabel}
+            </span>
           </div>
-          <span
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${badgeClass}`}
-          >
-            <span className={`h-2 w-2 rounded-full ${dotClass}`} aria-hidden="true" />
-            {riskLabel}
-          </span>
+          <dl className="grid gap-4 rounded-2xl border border-border bg-surface p-4 text-sm sm:grid-cols-3">
+            {stats.map((stat) => (
+              <div key={stat.label} className="space-y-1">
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted">
+                  {stat.label}
+                </dt>
+                <dd className="text-base font-semibold text-text tabular-nums">{stat.value}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
-        <dl className="grid gap-4 rounded-2xl border border-border bg-surface p-4 text-sm sm:grid-cols-3">
-          {stats.map((stat) => (
-            <div key={stat.label} className="space-y-1">
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted">
-                {stat.label}
-              </dt>
-              <dd className="text-base font-semibold text-text tabular-nums">{stat.value}</dd>
-            </div>
-          ))}
-        </dl>
-        <div className="flex items-center justify-between text-sm font-medium text-primary">
+        <div className="mt-auto flex items-center justify-between text-sm font-medium text-primary">
           <span>Смотреть детали</span>
           <svg
             className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
