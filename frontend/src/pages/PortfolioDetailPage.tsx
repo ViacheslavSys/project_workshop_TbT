@@ -116,10 +116,15 @@ export default function PortfolioDetailPage() {
       if (!next) {
         setError("Сервер не вернул рекомендацию. Попробуйте позже.");
         setPortfolio(null);
+        setAnalysis("");
         return;
       }
 
       setPortfolio(next);
+      setAnalysis(
+        typeof response.analysis === "string" ? response.analysis : "",
+      );
+      setAnalysisError(null);
     } catch (err) {
       const message =
         err instanceof Error
@@ -505,15 +510,30 @@ export default function PortfolioDetailPage() {
               Генерируется на сервере на основе ваших целей и риск-профиля
             </p>
           </div>
-          <button
-            type="button"
-            className="tab"
-            onClick={fetchAnalysis}
-            disabled={analysisLoading || !canViewFullDetails}
-          >
-            {analysisLoading ? "Запрашиваем..." : "Запросить объяснение"}
-          </button>
+          <div className="flex flex-col items-start gap-1 sm:items-end">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="group relative inline-flex">
+                <button
+                  type="button"
+                  className="tab"
+                  onClick={fetchAnalysis}
+                  aria-describedby="update-analysis-tooltip"
+                  disabled={analysisLoading || !canViewFullDetails}
+                >
+                  {analysisLoading ? "Обновляем..." : "Обновить объяснение"}
+                </button>
+                <span
+                  id="update-analysis-tooltip"
+                  role="tooltip"
+                  className="pointer-events-none absolute left-1/2 top-full z-10 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black/70 px-2 py-1 text-[11px] leading-tight text-white shadow-lg group-hover:block group-focus-within:block"
+                >
+                  Действие может занять пару минут
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
+
         {analysisError && !analysisLoading ? (
           <div className="rounded-xl border border-danger/40 bg-danger/5 px-4 py-3 text-sm text-danger">
             {analysisError}

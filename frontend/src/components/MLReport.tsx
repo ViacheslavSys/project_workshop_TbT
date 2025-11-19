@@ -16,7 +16,6 @@ type Props = {
   explanation: string;
   formulas: Formula[];
   title?: string;
-  defaultTab?: "explanation" | "formulas";
 };
 
 const joinClasses = (...classes: Array<string | undefined>) =>
@@ -160,13 +159,9 @@ function CopyButton({ value }: { value: string }) {
 export default function MLReport({
   explanation,
   formulas,
-  title = "Пояснение расчётов",
-  defaultTab = "explanation",
+  title = "Пояснение расчётов"
 }: Props) {
   const hasFormulas = Array.isArray(formulas) && formulas.length > 0;
-  const initialTab =
-    defaultTab === "formulas" && hasFormulas ? "formulas" : "explanation";
-  const [tab, setTab] = useState<"explanation" | "formulas">(initialTab);
 
   return (
     <div className="card">
@@ -175,64 +170,9 @@ export default function MLReport({
           <div>{title}</div>
           <InfoTip title="Что это?">Аналитика подготовлена LLM на основе текущего состава портфеля.</InfoTip>
         </div>
-        {hasFormulas ? (
-          <div className="flex items-center gap-1">
-            <button
-              className={`tab ${tab === "explanation" ? "tab-active" : ""}`}
-              onClick={() => setTab("explanation")}
-            >
-              Пояснение
-            </button>
-            <button
-              className={`tab ${tab === "formulas" ? "tab-active" : ""}`}
-              onClick={() => setTab("formulas")}
-            >
-              Формулы
-            </button>
-          </div>
-        ) : null}
       </div>
-      <div className="card-body">
-        {tab === "formulas" && hasFormulas ? (
-          <div className="space-y-4">
-            {formulas.map((f, idx) => (
-              <div
-                key={f.id || idx}
-                className="p-3 rounded-xl border border-border bg-white/5"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-medium">
-                    {f.title || `Формула ${idx + 1}`}
-                  </div>
-                  <CopyButton value={f.latex || f.text || ""} />
-                </div>
-                {f.latex ? (
-                  <pre className="whitespace-pre-wrap text-sm p-2 rounded bg-black/30 overflow-auto">
-                    {f.latex}
-                  </pre>
-                ) : f.text ? (
-                  <pre className="whitespace-pre-wrap text-sm p-2 rounded bg-black/30 overflow-auto">
-                    {f.text}
-                  </pre>
-                ) : null}
-                {Array.isArray(f.variables) && f.variables.length ? (
-                  <div className="mt-2 text-xs text-muted">
-                    <div className="mb-1">Переменные:</div>
-                    <ul className="list-disc list-inside space-y-1">
-                      {f.variables.map((v, i) => (
-                        <li key={i}>
-                          <span className="font-mono">{v.name}</span> — {v.meaning}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <MarkdownExplanation text={explanation} />
-        )}
+      <div className="card-body space-y-6">
+        <MarkdownExplanation text={explanation} />
       </div>
     </div>
   );
