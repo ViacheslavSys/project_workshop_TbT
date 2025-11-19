@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import type { PortfolioRecommendation } from "../api/chat";
+import type { MonthlyPaymentDetail, PortfolioRecommendation } from "../api/chat";
 import { fetchPortfolioAnalysis } from "../api/chat";
 import type { PortfolioSummary } from "../api/portfolios";
 import { fetchPortfolioById } from "../api/portfolios";
@@ -285,6 +285,9 @@ export default function PortfolioDetailPage() {
 
   const horizonYears = (portfolio.investment_term_months ?? 0) / 12 || 0;
   const sensitiveInfoRestricted = !canViewFullDetails;
+  const monthlyPlanDetail = portfolio.monthly_payment_detail ?? null;
+  const planStepsTotal = portfolio.step_by_step_plan?.total_steps;
+  const planStepsCountLabel = planStepsTotal ?? (planSteps.length || null);
 
   return (
     <div className="space-y-6">
@@ -368,6 +371,12 @@ export default function PortfolioDetailPage() {
 
       <RestrictedPortfolioDetails restricted={!canViewFullDetails}>
         <div className="space-y-6">
+          {monthlyPlanDetail ? (
+            <MonthlyPlanCard
+              detail={monthlyPlanDetail}
+              restricted={sensitiveInfoRestricted}
+            />
+          ) : null}
           <section className="card">
             <div className="card-header flex items-center justify-between">
               <div>
@@ -412,51 +421,76 @@ export default function PortfolioDetailPage() {
           )}
           {planSteps.length ? (
             <section className="card space-y-4">
-              <div className="card-header flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="card-header flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="text-lg font-semibold">Пошаговый инвестиционный план</div>
                   <p className="text-sm text-muted">
                     Подсказывает, как распределять ежемесячный взнос {formatMoney(portfolio.monthly_payment_detail?.monthly_payment)} и выполнять покупки по плану.
                   </p>
                 </div>
-                {planGeneratedAt ? (
-                  <div className="text-xs text-muted">Сформирован {planGeneratedAt}</div>
+                {planGeneratedAt || planStepsCountLabel ? (
+                  <div className="text-xs text-muted text-right">
+                    {planGeneratedAt ? <div>Сформирован {planGeneratedAt}</div> : null}
+                    {planStepsCountLabel ? (
+                      <div>Шагов в плане: {planStepsCountLabel}</div>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
-              <div className="card-body space-y-4">
-                {planSteps.map((step, index) => {
-                  const actions = Array.isArray(step.actions) ? step.actions : [];
-                  const displayNumber = Number.isFinite(step.step_number)
-                    ? step.step_number + 1
-                    : index + 1;
+              <div className="card-body">
+                <ol className="list-none space-y-6">
+                  {planSteps.map((step, index) => {
+                    const actions = Array.isArray(step.actions) ? step.actions : [];
+                    const displayNumber = Number.isFinite(step.step_number)
+                      ? step.step_number + 1
+                      : index + 1;
+                    const title = step.title?.trim() || `Шаг ${displayNumber}`;
+                    const isLast = index === planSteps.length - 1;
+                    const isMonthlyPurchasePlan = isMonthlyPurchasePlanStep(title);
+                    const monthlyPurchaseRows =
+                      isMonthlyPurchasePlan && actions.length
+                        ? buildMonthlyPurchasePlanRows(actions)
+                        : null;
 
-                  return (
-                    <article
-                      key={`plan-step-${step.step_number}-${index}`}
-                      className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4"
-                    >
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <div className="text-xs uppercase text-muted">Шаг {displayNumber}</div>
-                        <div className="text-sm font-semibold">{step.title}</div>
-                      </div>
-                      {step.description ? (
-                        <p className="text-sm text-muted">{step.description}</p>
-                      ) : null}
-                      {actions.length ? (
-                        <ul className="list-disc space-y-1 pl-5 text-sm text-text">
-                          {actions.map((action, actionIndex) => (
-                            <li
-                              key={`plan-step-${step.step_number}-${actionIndex}`}
-                              className="text-muted"
-                            >
-                              {action}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </article>
-                  );
-                })}
+                    return (
+                      <li key={`plan-step-${step.step_number}-${index}`} className="flex gap-4">
+                        <div className="flex w-12 flex-col items-center text-xs text-muted">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-sm font-semibold text-primary">
+                            {displayNumber}
+                          </div>
+                          {!isLast ? (
+                            <div className="mt-2 w-px flex-1 bg-white/10" aria-hidden="true" />
+                          ) : null}
+                        </div>
+                        <article className="flex-1 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div className="text-base font-semibold">{title}</div>
+                          {step.description ? (
+                            <p className="text-sm text-muted">{step.description}</p>
+                          ) : null}
+                          {actions.length ? (
+                            <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3">
+                              <p className="text-xs uppercase text-muted">Что сделать</p>
+                              {monthlyPurchaseRows?.length ? (
+                                <MonthlyPurchasePlanTable rows={monthlyPurchaseRows} />
+                              ) : (
+                                <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-text">
+                                  {actions.map((action, actionIndex) => (
+                                    <li
+                                      key={`plan-step-${step.step_number}-${actionIndex}`}
+                                      className="text-muted"
+                                    >
+                                      {action}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          ) : null}
+                        </article>
+                      </li>
+                    );
+                  })}
+                </ol>
               </div>
             </section>
           ) : null}
@@ -542,6 +576,91 @@ function SummaryCard({
   );
 }
 
+function MonthlyPlanCard({
+  detail,
+  restricted,
+}: {
+  detail: MonthlyPaymentDetail;
+  restricted: boolean;
+}) {
+  const monthlyPayment = ensureFiniteNumber(detail.monthly_payment);
+  const totalMonths = Math.max(0, Math.round(ensureFiniteNumber(detail.total_months)));
+  const totalYears = totalMonths ? totalMonths / 12 : 0;
+  const totalContribution = monthlyPayment * totalMonths;
+  const annuityFactor = ensureFiniteNumber(detail.annuity_factor);
+  const totalMonthsLabel = totalMonths
+    ? `${totalMonths.toLocaleString("ru-RU")} мес.${totalYears ? ` (${totalYears.toFixed(1)} лет)` : ""}`
+    : "—";
+
+  const stats: Array<{ label: string; value: string; hint?: string }> = [
+    {
+      label: "Срок накопления",
+      value: totalMonthsLabel,
+      hint: "Период, на который рассчитан ежемесячный план",
+    },
+    {
+      label: "Накопите к концу периода",
+      value: formatMoney(detail.future_capital),
+      hint: "Прогнозируемый капитал при соблюдении графика",
+    },
+    {
+      label: "Сумма взносов за период",
+      value: formatMoney(totalContribution),
+      hint: "Регулярные взносы без стартового капитала и доходности",
+    },
+    {
+      label: "Месячная доходность модели",
+      value: formatPercent(detail.monthly_rate, 2),
+      hint: "Используется при расчёте ежемесячного платежа",
+    },
+    {
+      label: "Ануитетный коэффициент",
+      value: annuityFactor ? annuityFactor.toFixed(2) : "—",
+      hint: "Во сколько раз взнос меньше цели",
+    },
+  ];
+
+  return (
+    <section className="card space-y-4">
+      <div className="card-header flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="text-lg font-semibold">Месячный план взносов</div>
+          <p className="text-sm text-muted">
+            Помогает контролировать регулярные пополнения и держать темп накоплений.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-primary/40 bg-primary/5 px-6 py-4 text-center">
+          <p className="text-xs uppercase text-muted">Ежемесячный взнос</p>
+          <p className="text-3xl font-semibold text-primary">
+            <SensitiveValue restricted={restricted}>
+              {formatMoney(detail.monthly_payment)}
+            </SensitiveValue>
+          </p>
+          {totalMonths ? (
+            <p className="text-xs text-muted">
+              На протяжении {totalMonths.toLocaleString("ru-RU")} мес.
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <div className="card-body">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {stats.map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+            >
+              <p className="text-xs uppercase text-muted">{stat.label}</p>
+              <p className="text-base font-semibold text-text">{stat.value}</p>
+              {stat.hint ? <p className="text-xs text-muted">{stat.hint}</p> : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SensitiveValue({
   children,
   restricted,
@@ -592,6 +711,109 @@ function RestrictedPortfolioDetails({
           Войти, чтобы увидеть структуру
         </Link>
       </div>
+    </div>
+  );
+}
+
+type MonthlyPurchasePlanRow = {
+  monthLabel: string;
+  instructions: string[];
+  totalLabel: string | null;
+};
+
+const MONTHLY_PURCHASE_PLAN_TITLE_MARKER = "план покупок по месяцам";
+
+function isMonthlyPurchasePlanStep(title?: string | null) {
+  if (!title) {
+    return false;
+  }
+  return title.toLowerCase().includes(MONTHLY_PURCHASE_PLAN_TITLE_MARKER);
+}
+
+function buildMonthlyPurchasePlanRows(actions: string[]): MonthlyPurchasePlanRow[] {
+  const rows: MonthlyPurchasePlanRow[] = [];
+
+  actions.forEach((action, index) => {
+    if (typeof action !== "string") {
+      return;
+    }
+    const normalized = action.trim();
+    if (!normalized) {
+      return;
+    }
+
+    const match = normalized.match(/^Месяц\s+(\d+)\s*:\s*(.+)$/i);
+
+    if (!match) {
+      rows.push({
+        monthLabel: `Месяц ${(index + 1).toLocaleString("ru-RU")}`,
+        instructions: [normalized],
+        totalLabel: null,
+      });
+      return;
+    }
+
+    const monthNumber = Number(match[1]);
+    const monthLabel = Number.isFinite(monthNumber)
+      ? `Месяц ${monthNumber.toLocaleString("ru-RU")}`
+      : `Месяц ${match[1]}`;
+
+    let instructionText = match[2].trim();
+    let totalLabel: string | null = null;
+    const equalsIndex = instructionText.lastIndexOf("=");
+    if (equalsIndex !== -1) {
+      totalLabel = instructionText.slice(equalsIndex + 1).trim();
+      instructionText = instructionText.slice(0, equalsIndex).trim();
+    }
+
+    const instructions = instructionText
+      .split(/\s*\+\s*/)
+      .map((item) => item.replace(/\s{2,}/g, " ").trim())
+      .filter(Boolean);
+
+    rows.push({
+      monthLabel,
+      instructions: instructions.length ? instructions : [instructionText || normalized],
+      totalLabel,
+    });
+  });
+
+  return rows;
+}
+
+function MonthlyPurchasePlanTable({ rows }: { rows: MonthlyPurchasePlanRow[] }) {
+  if (!rows.length) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="text-xs uppercase text-muted">
+            <th className="border-b border-white/10 px-3 py-2 text-left font-medium">Месяц</th>
+            <th className="border-b border-white/10 px-3 py-2 text-left font-medium">Что сделать</th>
+            <th className="border-b border-white/10 px-3 py-2 text-right font-medium">Бюджет</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={`${row.monthLabel}-${rowIndex}`} className="border-b border-white/5 last:border-b-0">
+              <td className="whitespace-nowrap px-3 py-3 font-semibold text-text">{row.monthLabel}</td>
+              <td className="px-3 py-3">
+                <ul className="list-disc space-y-1 pl-4 text-muted">
+                  {row.instructions.map((instruction, instructionIndex) => (
+                    <li key={`${row.monthLabel}-${instructionIndex}`}>{instruction}</li>
+                  ))}
+                </ul>
+              </td>
+              <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-text">
+                {row.totalLabel ?? "-"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
