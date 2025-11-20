@@ -301,37 +301,6 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
                   );
                 })}
               </div>
-              <div className="max-h-48 w-full space-y-2 overflow-y-auto pr-1 text-[11px]">
-                {tableRows.map((item) => {
-                  const isActive = hoveredKey === item.key;
-                  const isDimmed = Boolean(hoveredKey && !isActive);
-                  return (
-                    <div
-                      key={`${item.key}-legend`}
-                      className={classNames(
-                        "flex items-center justify-between gap-2 text-text transition",
-                        isActive ? "text-white" : undefined,
-                        isDimmed ? "opacity-60" : undefined,
-                      )}
-                      onMouseEnter={makeHoverHandler(item.key)}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: item.color }}
-                          aria-hidden="true"
-                        />
-                        <span className="truncate">
-                          {item.row.name || item.row.ticker || "—"}
-                        </span>
-                      </div>
-                      <span className="text-muted">
-                        {formatShareLabel(item.share)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </div>
         </div>
