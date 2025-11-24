@@ -89,13 +89,13 @@ def fetch_all_prices_data(tickers: List[Tuple[str, str, str]]) -> Dict[str, Dict
 
         # Определяем рынок
         if (
-            asset_type == "акция"
-            or asset_type == "золото"
-            or asset_type == "недвижимость"
+            asset_type == "Акция"
+            or asset_type == "Золото"
+            or asset_type == "Недвижимость"
         ):
             engine = "stock"
             market = "shares"
-        elif "облигация" in asset_type:
+        elif "Облигация" in asset_type:
             engine = "stock"
             market = "bonds"
         else:
@@ -214,7 +214,7 @@ def calculate_yield_and_volatility(price_data: Dict[str, Dict]) -> Dict[str, Dic
             )
         else:
             # Fallback по типу актива
-            if "облигация" in asset_type:
+            if "Облигация" in asset_type:
                 if "краткосроч" in asset_type:
                     yield_value = 0.08
                 elif "среднесроч" in asset_type:
@@ -223,11 +223,11 @@ def calculate_yield_and_volatility(price_data: Dict[str, Dict]) -> Dict[str, Dic
                     yield_value = 0.10
                 else:
                     yield_value = 0.085
-            elif asset_type == "акция":
+            elif asset_type == "Акция":
                 yield_value = 0.12
-            elif asset_type == "золото":
+            elif asset_type == "Золото":
                 yield_value = 0.06
-            elif asset_type == "недвижимость":
+            elif asset_type == "Недвижимость":
                 yield_value = 0.07
             else:
                 yield_value = 0.08
@@ -283,13 +283,13 @@ def calculate_yield_and_volatility(price_data: Dict[str, Dict]) -> Dict[str, Dic
 
 def get_fallback_volatility(asset_type: str) -> float:
     """Получить fallback значение волатильности по типу актива"""
-    if "облигация" in asset_type:
+    if "Облигация" in asset_type:
         return 0.05
-    elif asset_type == "акция":
+    elif asset_type == "Акция":
         return 0.20
-    elif asset_type == "золото":
+    elif asset_type == "Золото":
         return 0.15
-    elif asset_type == "недвижимость":
+    elif asset_type == "Недвижимость":
         return 0.15
     else:
         return 0.15

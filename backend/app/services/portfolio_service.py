@@ -120,60 +120,60 @@ class PortfolioService:
                 'short': {
                     'акции': 0.1,
                     'облигации': 0.7,
-                    'золото': 0.1,
-                    'недвижимость': 0.1,
+                    'Золото': 0.1,
+                    'Недвижимость': 0.1,
                 },
                 'medium': {
                     'акции': 0.2,
                     'облигации': 0.65,
-                    'золото': 0.08,
-                    'недвижимость': 0.07,
+                    'Золото': 0.08,
+                    'Недвижимость': 0.07,
                 },
                 'long': {
                     'акции': 0.45,
                     'облигации': 0.45,
-                    'золото': 0.05,
-                    'недвижимость': 0.05,
+                    'Золото': 0.05,
+                    'Недвижимость': 0.05,
                 },
             },
             'moderate': {
                 'short': {
                     'акции': 0.1,
                     'облигации': 0.75,
-                    'золото': 0.08,
-                    'недвижимость': 0.07,
+                    'Золото': 0.08,
+                    'Недвижимость': 0.07,
                 },
                 'medium': {
                     'акции': 0.4,
                     'облигации': 0.5,
-                    'золото': 0.05,
-                    'недвижимость': 0.05,
+                    'Золото': 0.05,
+                    'Недвижимость': 0.05,
                 },
                 'long': {
                     'акции': 0.55,
                     'облигации': 0.4,
-                    'золото': 0.03,
-                    'недвижимость': 0.02,
+                    'Золото': 0.03,
+                    'Недвижимость': 0.02,
                 },
             },
             'aggressive': {
                 'short': {
                     'акции': 0.45,
                     'облигации': 0.45,
-                    'золото': 0.05,
-                    'недвижимость': 0.05,
+                    'Золото': 0.05,
+                    'Недвижимость': 0.05,
                 },
                 'medium': {
                     'акции': 0.55,
                     'облигации': 0.4,
-                    'золото': 0.03,
-                    'недвижимость': 0.02,
+                    'Золото': 0.03,
+                    'Недвижимость': 0.02,
                 },
                 'long': {
                     'акции': 0.60,
                     'облигации': 0.35,
-                    'золото': 0.03,
-                    'недвижимость': 0.02,
+                    'Золото': 0.03,
+                    'Недвижимость': 0.02,
                 },
             },
         }
@@ -188,7 +188,7 @@ class PortfolioService:
     ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
         """Подбор акций по риск-профилю"""
 
-        all_stocks = self.asset_repo.get_assets_by_type(self.db_session, 'акция')
+        all_stocks = self.asset_repo.get_assets_by_type(self.db_session, 'Акция')
 
         strategies = {
             'conservative': ['SBER', 'GAZP', 'LKOH'],
@@ -247,7 +247,7 @@ class PortfolioService:
     ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
         """Подбор облигаций по сроку инвестирования"""
 
-        all_bonds = self.asset_repo.get_assets_by_type(self.db_session, 'облигация')
+        all_bonds = self.asset_repo.get_assets_by_type(self.db_session, 'Облигация')
 
         if not all_bonds:
             return []
@@ -311,7 +311,7 @@ class PortfolioService:
     def select_etf_assets(
         self, asset_type: str, budget: float
     ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
-        """Подбор ETF активов (золото, недвижимость)"""
+        """Подбор ETF активов (Золото, Недвижимость)"""
 
         etf_assets = self.asset_repo.get_assets_by_type(self.db_session, asset_type)
 
@@ -394,10 +394,10 @@ class PortfolioService:
                 assets = self.select_stocks_by_risk(risk_profile, budget)
             elif asset_type == 'облигации':
                 assets = self.select_bonds_by_term(term_years, budget)
-            elif asset_type == 'золото':
-                assets = self.select_etf_assets('золото', budget)
-            elif asset_type == 'недвижимость':
-                assets = self.select_etf_assets('недвижимость', budget)
+            elif asset_type == 'Золото':
+                assets = self.select_etf_assets('Золото', budget)
+            elif asset_type == 'Недвижимость':
+                assets = self.select_etf_assets('Недвижимость', budget)
             else:
                 assets = []
 

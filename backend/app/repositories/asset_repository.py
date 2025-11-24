@@ -14,7 +14,7 @@ class AssetRepository:
 
     def get_assets_by_type(self, db_session: Session, asset_type: str) -> List[Asset]:
         """Получить активы по типу"""
-        if asset_type.lower() == 'облигация':
+        if asset_type.lower() == 'Облигация':
             result = (
                 db_session.query(Asset)
                 .filter(Asset.type.ilike(f'%{asset_type}%'))
