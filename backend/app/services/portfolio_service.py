@@ -510,7 +510,7 @@ class PortfolioService:
             portfolio_dict['updated_at'] = portfolio_dict['updated_at'].isoformat()
 
         portfolio_key = f"user:{user_id}:portfolio"
-        cache.set_json(portfolio_key, portfolio_dict, expire=3600)
+        cache.set_json(portfolio_key, portfolio_dict, expire=360000)
 
         return portfolio_response
 
