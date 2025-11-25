@@ -94,6 +94,11 @@ const formatShareLabel = (value: number) =>
 const classNames = (...values: Array<string | false | null | undefined>) =>
   values.filter(Boolean).join(" ");
 
+const formatAssetTypeLabel = (value?: string) => {
+  if (!value) return "-";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
 export default function PortfolioAssetsTable({
   blocks,
   title = "Состав портфеля",
@@ -173,9 +178,8 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
       <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="text-xs text-muted">Класс активов</div>
             <div className="text-sm font-semibold text-text">
-              {block.assetType || "—"}
+              {formatAssetTypeLabel(block.assetType)}
             </div>
           </div>
           <div className="text-xs text-muted text-right">
@@ -202,9 +206,8 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs text-muted">Класс активов</div>
           <div className="text-sm font-semibold text-text">
-            {block.assetType || "—"}
+            {formatAssetTypeLabel(block.assetType)}
           </div>
         </div>
         <div className="text-xs text-muted text-right">
