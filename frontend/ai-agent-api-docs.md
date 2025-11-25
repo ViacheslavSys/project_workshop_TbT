@@ -238,7 +238,7 @@ curl -F "file=@voice.wav" http://localhost:8000/api/transcribe
       { "ticker": "OFZ", "name": "ОФЗ", "allocation": 45, "expectedReturn": 6.5, "risk": 4.0 },
       { "ticker": "SBER", "name": "Сбербанк", "allocation": 25, "expectedReturn": 11.0, "risk": 14.0 },
       { "ticker": "LKOH", "name": "Лукойл", "allocation": 20, "expectedReturn": 12.0, "risk": 16.0 },
-      { "ticker": "GOLD", "name": "Золото ETF", "allocation": 10, "expectedReturn": 7.5, "risk": 8.0 }
+      { "ticker": "GOLD", "name": "золото ETF", "allocation": 10, "expectedReturn": 7.5, "risk": 8.0 }
     ],
     "metrics": {
       "sharpeRatio": 1.1,
