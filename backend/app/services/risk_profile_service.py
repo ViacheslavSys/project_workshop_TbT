@@ -202,7 +202,7 @@ def apply_restrictions(
         conservative = max(conservative, 8)
 
     # Страх потерь → консервативный
-    if answers_map.get(9) == "A" or answers_map.get(7) == "A":
+    if answers_map.get(9) == "A" and answers_map.get(7) == "A":
         aggressive = 0
         moderate = 0
         conservative = max(conservative, 8)
@@ -225,10 +225,10 @@ def determine_profile_v2(
 
     if aggressive >= 15:
         return "Агрессивный"
-    elif moderate >= 8 and moderate <= 14:
-        return "Умеренный"
-    else:
+    elif conservative >= 12:
         return "Консервативный"
+    else:
+        return "Умеренный"
 
 
 def calculate_profile_v2(
