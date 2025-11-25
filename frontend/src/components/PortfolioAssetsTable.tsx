@@ -166,6 +166,8 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
     });
   })();
 
+  const showDistribution = tableRows.length > 1;
+
   if (!rows.length) {
     return (
       <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
@@ -215,7 +217,7 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      <div className="flex flex-col gap-4">
         <div className="flex-1 overflow-hidden rounded-md border border-white/10">
           <div className="max-w-full overflow-x-auto">
             <table className="min-w-[520px] w-full text-xs md:text-sm">
@@ -272,38 +274,63 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
             </table>
           </div>
         </div>
-        <div className="hidden lg:flex lg:min-w-[220px] lg:max-w-[260px] lg:flex-col">
-          <div className="flex flex-1 flex-col rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-muted">
-            <div className="text-[11px] font-semibold uppercase tracking-wide">
-              Распределение позиций
+
+        {showDistribution ? (
+          <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-muted">
+            <div className="flex h-10 w-full items-stretch overflow-hidden rounded-lg border border-white/10 bg-white/5">
+              {tableRows.map((item) => {
+                const isActive = hoveredKey === item.key;
+                const isDimmed = Boolean(hoveredKey && !isActive);
+                return (
+                  <div
+                    key={`${item.key}-segment`}
+                    className="h-full transition-all"
+                    style={{
+                      flexGrow: item.share > 0 ? item.share : 0,
+                      minWidth: item.share > 0 ? 12 : 0,
+                      backgroundColor: item.color,
+                      opacity: isDimmed ? 0.35 : 1,
+                      boxShadow: isActive
+                        ? "0 0 0 2px rgba(255,255,255,0.45)"
+                        : undefined,
+                    }}
+                    title={`${item.row.name || item.row.ticker || "-"}: ${formatShareLabel(item.share)}`}
+                    onMouseEnter={makeHoverHandler(item.key)}
+                  />
+                );
+              })}
             </div>
-            <div className="mt-4 flex flex-col items-center gap-3">
-              <div className="flex h-48 w-12 flex-col overflow-hidden rounded-full border border-white/10 bg-white/5">
-                {tableRows.map((item) => {
-                  const isActive = hoveredKey === item.key;
-                  const isDimmed = Boolean(hoveredKey && !isActive);
-                  return (
-                    <div
-                      key={`${item.key}-segment`}
-                      className="w-full transition-all"
-                      style={{
-                        flexGrow: item.share > 0 ? item.share : 0,
-                        minHeight: item.share > 0 ? 4 : 0,
-                        backgroundColor: item.color,
-                        opacity: isDimmed ? 0.35 : 1,
-                        boxShadow: isActive
-                          ? "0 0 0 2px rgba(255,255,255,0.45)"
-                          : undefined,
-                      }}
-                      title={`${item.row.name || item.row.ticker || "—"}: ${formatShareLabel(item.share)}`}
-                      onMouseEnter={makeHoverHandler(item.key)}
+            <div className="flex flex-wrap gap-3 text-[11px] leading-relaxed">
+              {tableRows.map((item) => {
+                const isActive = hoveredKey === item.key;
+                const isDimmed = Boolean(hoveredKey && !isActive);
+                return (
+                  <div
+                    key={`${item.key}-legend`}
+                    className={classNames(
+                      "flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-3 py-1 text-text transition",
+                      isActive ? "border-white/20 bg-white/10" : undefined,
+                      isDimmed ? "opacity-60" : undefined,
+                    )}
+                    onMouseEnter={makeHoverHandler(item.key)}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: item.color }}
+                      aria-hidden="true"
                     />
-                  );
-                })}
-              </div>
+                    <span className="truncate">
+                      {item.row.name || item.row.ticker || "-"}
+                    </span>
+                    <span className="text-muted">
+                      {formatShareLabel(item.share)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </div>
   );
