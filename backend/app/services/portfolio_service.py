@@ -502,10 +502,15 @@ class PortfolioService:
             investment_term_months=term_months,
             annual_inflation_rate=inflation_rate,
             future_value_with_inflation=future_value,
+            updated_at=datetime.now(),
             recommendation=recommendation,
         )
+        portfolio_dict = portfolio_response.dict()
+        if portfolio_dict.get('updated_at'):
+            portfolio_dict['updated_at'] = portfolio_dict['updated_at'].isoformat()
+
         portfolio_key = f"user:{user_id}:portfolio"
-        cache.set_json(portfolio_key, portfolio_response.dict(), expire=3600)
+        cache.set_json(portfolio_key, portfolio_dict, expire=360000)
 
         return portfolio_response
 
@@ -649,6 +654,11 @@ class PortfolioService:
                     created_at=(
                         portfolio.created_at.isoformat()
                         if portfolio.created_at
+                        else None
+                    ),
+                    updated_at=(
+                        portfolio.updated_at.isoformat()
+                        if portfolio.updated_at
                         else None
                     ),
                 )
@@ -996,12 +1006,16 @@ class PortfolioService:
             step_by_step_plan=step_plan,
         )
 
+        updated_at_str = None
+        if portfolio.updated_at:
+            updated_at_str = portfolio.updated_at.isoformat()
         return PortfolioCalculationResponse(
             target_amount=portfolio.target_amount,
             initial_capital=portfolio.initial_capital,
             investment_term_months=portfolio.investment_term_months,
             annual_inflation_rate=portfolio.annual_inflation_rate,
             future_value_with_inflation=portfolio.future_value_with_inflation,
+            updated_at=updated_at_str,
             recommendation=recommendation,
             analysis=analysis_text,
         )
