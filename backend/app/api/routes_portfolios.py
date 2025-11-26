@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
+from app.core.redis_cache import cache
 from app.models.user import User
 from app.schemas.portfolio import (
     PortfolioAnalysisRequest,
@@ -152,4 +153,27 @@ async def get_portfolio_detail(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Ошибка при получении портфеля: {str(e)}"
+        )
+
+
+@router.delete("/cache/clear", status_code=200)
+async def clear_user_cache(current_user: User = Depends(get_current_user)):
+    """
+    Полная очистка всего кеша текущего пользователя
+    """
+    try:
+        user_id = str(current_user.id)
+
+        # Удаляем все ключи, начинающиеся с user:{user_id}:
+        deleted_count = cache.delete_pattern(f"user:{user_id}:*")
+
+        return {
+            "message": "Весь кеш пользователя успешно очищен",
+            "deleted_keys_count": deleted_count,
+            "user_id": user_id,
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка при очистке кеша: {str(e)}"
         )
