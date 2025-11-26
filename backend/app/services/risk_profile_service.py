@@ -225,10 +225,10 @@ def determine_profile_v2(
 
     if aggressive >= 15:
         return "Агрессивный"
-    elif moderate >= 8 and moderate <= 14:
-        return "Умеренный"
-    else:
+    elif conservative >= 12:
         return "Консервативный"
+    else:
+        return "Умеренный"
 
 
 def calculate_profile_v2(
