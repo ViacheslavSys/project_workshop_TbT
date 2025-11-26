@@ -231,6 +231,7 @@ export default function ChatWide() {
     () => messages.some((message) => message.type === "portfolio_recommendation"),
     [messages],
   );
+  const isRiskSurveyActive = stage === "risk";
 
   useEffect(() => {
     if (stage === "goals" && messages.length === 0) {
@@ -872,9 +873,17 @@ export default function ChatWide() {
               </div>
             </div>
 
-            {hasPortfolioRecommendation ? (
+            {isRiskSurveyActive ? null : hasPortfolioRecommendation ? (
               isAuth ? (
                 <div className="sticky bottom-0 left-0 right-0 z-10 flex flex-col gap-2 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] pt-3 backdrop-blur sm:static sm:mt-3 sm:flex-row sm:items-center sm:border-t-0 sm:bg-transparent sm:pb-0 sm:pt-0">
+                  <button
+                    type="button"
+                    className="btn w-full sm:w-auto"
+                    onClick={handleStartNewPortfolio}
+                    disabled={portfolioCountLoading}
+                  >
+                    Создать новый портфель
+                  </button>
                 </div>
               ) : null
             ) : (
