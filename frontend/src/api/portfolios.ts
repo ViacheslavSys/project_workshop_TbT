@@ -14,6 +14,12 @@ type PortfolioListResponse = {
   portfolios: PortfolioSummary[];
 };
 
+export type ClearCacheResponse = {
+  message: string;
+  deleted_keys_count?: number;
+  user_id?: string;
+};
+
 export type PortfolioSaveResponse = {
   message: string;
   portfolio_id: number;
@@ -70,4 +76,15 @@ export async function savePortfolioToDb(
   });
 
   return handleResponse<PortfolioSaveResponse>(res);
+}
+
+export async function clearUserCache(token: string) {
+  const res = await fetch(buildUrl("/portfolios/cache/clear"), {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return handleResponse<ClearCacheResponse>(res);
 }
