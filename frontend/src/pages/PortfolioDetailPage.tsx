@@ -116,10 +116,15 @@ export default function PortfolioDetailPage() {
       if (!next) {
         setError("Сервер не вернул рекомендацию. Попробуйте позже.");
         setPortfolio(null);
+        setAnalysis("");
         return;
       }
 
       setPortfolio(next);
+      setAnalysis(
+        typeof response.analysis === "string" ? response.analysis : "",
+      );
+      setAnalysisError(null);
     } catch (err) {
       const message =
         err instanceof Error
@@ -228,6 +233,11 @@ export default function PortfolioDetailPage() {
     return formatDateTime(portfolio.step_by_step_plan.generated_at);
   }, [portfolio]);
 
+  const updatedAtLabel = useMemo(() => {
+    const formatted = formatDateTime(portfolio?.updated_at);
+    return formatted || "нет данных";
+  }, [portfolio?.updated_at]);
+
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center text-muted">
@@ -293,24 +303,7 @@ export default function PortfolioDetailPage() {
     <div className="space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-xs uppercase text-muted">
-            Портфель #{params.id ?? "—"}
-          </p>
           <h1 className="text-2xl font-semibold">{portfolio.smart_goal}</h1>
-          <p className="text-sm text-muted flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>Цель:</span>
-            <SensitiveValue restricted={sensitiveInfoRestricted}>
-              {formatMoney(portfolio.target_amount)}
-            </SensitiveValue>
-            <span>· Горизонт:</span>
-            <SensitiveValue restricted={sensitiveInfoRestricted}>
-              {`${horizonYears.toFixed(1)} лет`}
-            </SensitiveValue>
-            <span>· Ожидаемая доходность:</span>
-            <SensitiveValue restricted={sensitiveInfoRestricted}>
-              {formatPercent(portfolio.expected_portfolio_return)}
-            </SensitiveValue>
-          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link to="/portfolios" className="tab">
@@ -369,6 +362,39 @@ export default function PortfolioDetailPage() {
         />
       </section>
 
+      <section className="grid gap-3 lg:grid-cols-2">
+        <PortfolioInfoPanel updatedAtLabel={updatedAtLabel} className="h-full" />
+        <section className="card h-full">
+          <div className="card-header flex items-center justify-between">
+            <div>
+              <div className="text-lg font-semibold">Разбивка по классам активов</div>
+              <p className="text-sm text-muted">
+                Рекомендованные доли классов активов в итоговом портфеле
+              </p>
+            </div>
+          </div>
+          <div className="card-body flex flex-wrap gap-3">
+            {allocationSummary.length ? (
+              allocationSummary.map((item, index) => (
+                <div
+                  key={`${item.assetType}-${index}`}
+                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
+                >
+                  <div className="text-muted">{item.assetType}</div>
+                  <div className="text-lg font-semibold">
+                    {formatPercent(item.weight)}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted">
+                Нет данных о распределении активов.
+              </p>
+            )}
+          </div>
+        </section>
+      </section>
+
       <RestrictedPortfolioDetails restricted={!canViewFullDetails}>
         <div className="space-y-6">
           {monthlyPlanDetail ? (
@@ -377,38 +403,6 @@ export default function PortfolioDetailPage() {
               restricted={sensitiveInfoRestricted}
             />
           ) : null}
-          <section className="card">
-            <div className="card-header flex items-center justify-between">
-              <div>
-                <div className="text-lg font-semibold">Разбивка по классам активов</div>
-                <p className="text-sm text-muted">
-                  Рекомендованные доли классов активов в итоговом портфеле
-                </p>
-              </div>
-            </div>
-            <div className="card-body flex flex-wrap gap-3">
-              {allocationSummary.length ? (
-                allocationSummary.map((item, index) => (
-                  <div
-                    key={`${item.assetType}-${index}`}
-                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
-                  >
-                    <div className="text-muted">{item.assetType}</div>
-                    <div className="text-lg font-semibold">
-                      {formatPercent(item.weight)}
-                    </div>
-                    <div className="text-xs text-muted">
-                      ≈ {formatMoney(item.amount)}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted">
-                  Нет данных о распределении активов.
-                </p>
-              )}
-            </div>
-          </section>
 
           {assetBlocks.length ? (
             <PortfolioAssetsTable blocks={assetBlocks} title="Рекомендуемые активы к покупке" />
@@ -505,15 +499,30 @@ export default function PortfolioDetailPage() {
               Генерируется на сервере на основе ваших целей и риск-профиля
             </p>
           </div>
-          <button
-            type="button"
-            className="tab"
-            onClick={fetchAnalysis}
-            disabled={analysisLoading || !canViewFullDetails}
-          >
-            {analysisLoading ? "Запрашиваем..." : "Запросить объяснение"}
-          </button>
+          <div className="flex flex-col items-start gap-1 sm:items-end">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="group relative inline-flex">
+                <button
+                  type="button"
+                  className="tab"
+                  onClick={fetchAnalysis}
+                  aria-describedby="update-analysis-tooltip"
+                  disabled={analysisLoading || !canViewFullDetails}
+                >
+                  {analysisLoading ? "Обновляем..." : "Обновить объяснение"}
+                </button>
+                <span
+                  id="update-analysis-tooltip"
+                  role="tooltip"
+                  className="pointer-events-none absolute left-1/2 top-full z-10 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black/70 px-2 py-1 text-[11px] leading-tight text-white shadow-lg group-hover:block group-focus-within:block"
+                >
+                  Действие может занять пару минут
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
+
         {analysisError && !analysisLoading ? (
           <div className="rounded-xl border border-danger/40 bg-danger/5 px-4 py-3 text-sm text-danger">
             {analysisError}
@@ -530,6 +539,81 @@ export default function PortfolioDetailPage() {
           />
         )}
       </section>
+    </div>
+  );
+}
+
+function PortfolioInfoPanel({
+  updatedAtLabel,
+  className = "",
+}: {
+  updatedAtLabel: string;
+  className?: string;
+}) {
+  const isUpdatedAtMissing =
+    !updatedAtLabel || updatedAtLabel === "нет данных";
+
+  return (
+    <section
+      className={`card border-primary/30 bg-primary/5 ${className}`.trim()}
+    >
+      <div className="card-header text-lg font-semibold">Истточники данных</div>
+      <div className="card-body grid gap-3 sm:grid-cols-3">
+        <InfoTile
+          label="Откуда цены"
+          value={
+            <a
+              href="https://www.moex.com"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-primary hover:opacity-80"
+            >
+              MOEX
+            </a>
+          }
+        />
+        <InfoTile
+          label="Откуда инфляция"
+          value={
+            <a
+              href="https://www.cbr.ru"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-primary hover:opacity-80"
+            >
+              ЦБ РФ
+            </a>
+          }
+        />
+        <InfoTile
+          label="Дата обновления портфеля"
+          value={updatedAtLabel}
+          muted={isUpdatedAtMissing}
+        />
+      </div>
+    </section>
+  );
+}
+
+function InfoTile({
+  label,
+  value,
+  muted,
+}: {
+  label: string;
+  value: ReactNode;
+  muted?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+      <p className="text-xs uppercase text-muted">{label}</p>
+      <p
+        className={`text-sm font-semibold ${
+          muted ? "text-muted" : "text-text"
+        }`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -577,8 +661,7 @@ function SummaryCard({
 }
 
 function MonthlyPlanCard({
-  detail,
-  restricted,
+  detail
 }: {
   detail: MonthlyPaymentDetail;
   restricted: boolean;
@@ -621,34 +704,16 @@ function MonthlyPlanCard({
   ];
 
   return (
-    <section className="card space-y-4">
-      <div className="card-header flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <div className="text-lg font-semibold">Месячный план взносов</div>
-          <p className="text-sm text-muted">
-            Помогает контролировать регулярные пополнения и держать темп накоплений.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-primary/40 bg-primary/5 px-6 py-4 text-center">
-          <p className="text-xs uppercase text-muted">Ежемесячный взнос</p>
-          <p className="text-3xl font-semibold text-primary">
-            <SensitiveValue restricted={restricted}>
-              {formatMoney(detail.monthly_payment)}
-            </SensitiveValue>
-          </p>
-          {totalMonths ? (
-            <p className="text-xs text-muted">
-              На протяжении {totalMonths.toLocaleString("ru-RU")} мес.
-            </p>
-          ) : null}
-        </div>
+    <section className="card space-y-1">
+      <div className="card-header flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between !pt-4 !pb-2">
+        <div className="text-lg font-semibold">Месячный план взносов</div>
       </div>
-      <div className="card-body">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="card-body !pt-4 !pb-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2"
             >
               <p className="text-xs uppercase text-muted">{stat.label}</p>
               <p className="text-base font-semibold text-text">{stat.value}</p>

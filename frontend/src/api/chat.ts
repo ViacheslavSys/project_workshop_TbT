@@ -199,6 +199,7 @@ export type PortfolioCalculationResponse = {
   annual_inflation_rate: number;
   future_value_with_inflation: number;
   recommendation?: PortfolioRecommendation | null;
+  analysis?: string | null;
 };
 
 export type PortfolioAnalysisResponse = {
