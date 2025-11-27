@@ -175,8 +175,8 @@ export type StepByStepPlan = {
 export type PortfolioRecommendation = {
   portfolio_id?: string | number;
   id?: string | number;
-  created_at?: string;
-  updated_at?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
   target_amount: number;
   initial_capital: number;
   investment_term_months: number;
@@ -198,6 +198,7 @@ export type PortfolioCalculationResponse = {
   investment_term_months: number;
   annual_inflation_rate: number;
   future_value_with_inflation: number;
+  updated_at?: string | null;
   recommendation?: PortfolioRecommendation | null;
   analysis?: string | null;
 };

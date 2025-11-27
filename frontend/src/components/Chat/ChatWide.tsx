@@ -14,7 +14,7 @@ import {
   type RiskProfileResult,
   
 } from "../../api/chat";
-import { fetchUserPortfolios } from "../../api/portfolios";
+import { clearUserCache, fetchUserPortfolios } from "../../api/portfolios";
 import {
   enqueuePendingPortfolioSave,
   flushPendingPortfolioSaves,
@@ -321,6 +321,13 @@ export default function ChatWide() {
       return;
     }
 
+    if (accessToken) {
+      void clearUserCache(accessToken).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error("Failed to clear chat cache", err);
+      });
+    }
+
     setIsPortfolioLimitModalOpen(false);
     persistRiskState(null);
     setDraft("");
@@ -349,6 +356,7 @@ export default function ChatWide() {
     initialMessageRef.current = false;
     dispatch(resetChat());
   }, [
+    accessToken,
     dispatch,
     isAuth,
     portfolioCount,
@@ -798,9 +806,6 @@ export default function ChatWide() {
       <div className="card-header flex flex-wrap items-center justify-between gap-3">
         <div>ИИ-помощник</div>
         <div className="flex flex-wrap items-center gap-2">
-          {typing ? (
-            <div className="text-xs text-muted">Ассистент думает?</div>
-          ) : null}
           {isAuth ? (
             <button
               type="button"

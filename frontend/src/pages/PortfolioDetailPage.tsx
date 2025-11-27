@@ -120,7 +120,11 @@ export default function PortfolioDetailPage() {
         return;
       }
 
-      setPortfolio(next);
+      const updatedAt =
+        response.updated_at ??
+        (Array.isArray(recommendationPayload) ? null : next.updated_at ?? null);
+
+      setPortfolio({ ...next, updated_at: updatedAt });
       setAnalysis(
         typeof response.analysis === "string" ? response.analysis : "",
       );
