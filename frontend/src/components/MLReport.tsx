@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import InfoTip from "./InfoTip";
@@ -133,35 +133,11 @@ function MarkdownExplanation({ text }: { text: string }) {
   );
 }
 
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      className="text-xs px-2 py-1 rounded bg-white/5 border border-border hover:bg-white/10 transition"
-      onClick={async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        try {
-          await navigator.clipboard.writeText(value);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1200);
-        } catch {
-          /* ignore copy errors */
-        }
-      }}
-    >
-      {copied ? "Скопировано" : "Скопировать"}
-    </button>
-  );
-}
 
 export default function MLReport({
   explanation,
-  formulas,
   title = "Пояснение расчётов"
 }: Props) {
-  const hasFormulas = Array.isArray(formulas) && formulas.length > 0;
 
   return (
     <div className="card">

@@ -661,8 +661,7 @@ function SummaryCard({
 }
 
 function MonthlyPlanCard({
-  detail,
-  restricted,
+  detail
 }: {
   detail: MonthlyPaymentDetail;
   restricted: boolean;
