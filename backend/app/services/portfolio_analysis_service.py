@@ -71,7 +71,10 @@ class PortfolioAnalysisService:
             )
 
         portfolio_response = portfolio_service.convert_db_to_response(portfolio)
-        portfolio_dict = portfolio_response.dict()
+
+        from fastapi.encoders import jsonable_encoder
+
+        portfolio_dict = jsonable_encoder(portfolio_response)
 
         max_retries = len(self.api_keys)
 
