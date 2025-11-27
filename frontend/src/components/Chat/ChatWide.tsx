@@ -806,9 +806,6 @@ export default function ChatWide() {
       <div className="card-header flex flex-wrap items-center justify-between gap-3">
         <div>ИИ-помощник</div>
         <div className="flex flex-wrap items-center gap-2">
-          {typing ? (
-            <div className="text-xs text-muted">Ассистент думает?</div>
-          ) : null}
           {isAuth ? (
             <button
               type="button"

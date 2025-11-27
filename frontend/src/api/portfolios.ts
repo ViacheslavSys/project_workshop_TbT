@@ -8,6 +8,7 @@ export type PortfolioSummary = {
   initial_capital: number;
   risk_profile: string;
   created_at: string;
+  updated_at?: string | null;
 };
 
 type PortfolioListResponse = {
