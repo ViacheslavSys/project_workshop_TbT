@@ -505,12 +505,18 @@ class PortfolioService:
             updated_at=datetime.now(),
             recommendation=recommendation,
         )
-        # portfolio_dict = portfolio_response.dict()
-        # if portfolio_dict.get('updated_at'):
-        #     portfolio_dict['updated_at'] = portfolio_dict['updated_at'].isoformat()
+        portfolio_dict = portfolio_response.dict()
+
+        # Конвертируем updated_at в строку
+        if portfolio_dict.get('updated_at') and isinstance(
+            portfolio_dict['updated_at'], datetime
+        ):
+            portfolio_dict['updated_at'] = portfolio_dict['updated_at'].isoformat()
 
         portfolio_key = f"user:{user_id}:portfolio"
-        cache.set_json(portfolio_key, portfolio_response.dict(), expire=360000)
+        cache.set_json(
+            portfolio_key, portfolio_dict, expire=360000
+        )  # ← Теперь без ошибки
 
         return portfolio_response
 
@@ -566,7 +572,7 @@ class PortfolioService:
 
         # Создаем композиции портфеля
         for comp in portfolio_data.recommendation.composition:
-            portfolio_composition = PortfolioCompositionModel(  # ← Используйте Model
+            portfolio_composition = PortfolioCompositionModel(
                 portfolio_id=portfolio.id,
                 asset_type=comp.asset_type,
                 target_weight=comp.target_weight,
