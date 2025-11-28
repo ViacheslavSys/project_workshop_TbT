@@ -79,7 +79,9 @@ class PortfolioCalculationResponse(BaseModel):
     investment_term_months: int
     annual_inflation_rate: float
     future_value_with_inflation: float
+    updated_at: Optional[datetime] = None
     recommendation: Optional[PortfolioRecommendation]
+    analysis: Optional[str] = None
 
 
 class PortfolioAnalysisRequest(BaseModel):
@@ -99,6 +101,7 @@ class PortfolioSummary(BaseModel):
     initial_capital: float
     risk_profile: str
     created_at: datetime  # ← Измените на datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

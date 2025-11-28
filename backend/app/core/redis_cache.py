@@ -61,5 +61,30 @@ class RedisCache:
                 self._memory[key] = []
             self._memory[key].append(value)
 
+    def delete_pattern(self, pattern: str):
+        """
+        Удаляет все ключи по паттерну
+        """
+        if self.enabled:
+            keys = self.client.keys(pattern)
+            if keys:
+                self.client.delete(*keys)
+            return len(keys)
+        else:
+            # Для in-memory режима
+            keys_to_delete = [
+                k for k in self._memory.keys() if k.startswith(pattern.replace('*', ''))
+            ]
+            for key in keys_to_delete:
+                del self._memory[key]
+            return len(keys_to_delete)
+
+    def clear_user_cache(self, user_id: str):
+        """
+        Очищает весь кеш конкретного пользователя
+        """
+        pattern = f"user:{user_id}:*"
+        return self.delete_pattern(pattern)
+
 
 cache = RedisCache()

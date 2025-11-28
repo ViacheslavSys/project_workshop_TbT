@@ -14,7 +14,7 @@ import {
   type RiskProfileResult,
   
 } from "../../api/chat";
-import { fetchUserPortfolios } from "../../api/portfolios";
+import { clearUserCache, fetchUserPortfolios } from "../../api/portfolios";
 import {
   enqueuePendingPortfolioSave,
   flushPendingPortfolioSaves,
@@ -227,6 +227,11 @@ export default function ChatWide() {
   const [portfolioCount, setPortfolioCount] = useState<number | null>(null);
   const [portfolioCountLoading, setPortfolioCountLoading] = useState(false);
   const [isPortfolioLimitModalOpen, setIsPortfolioLimitModalOpen] = useState(false);
+  const hasPortfolioRecommendation = useMemo(
+    () => messages.some((message) => message.type === "portfolio_recommendation"),
+    [messages],
+  );
+  const isRiskSurveyActive = stage === "risk";
 
   useEffect(() => {
     if (stage === "goals" && messages.length === 0) {
@@ -316,6 +321,13 @@ export default function ChatWide() {
       return;
     }
 
+    if (accessToken) {
+      void clearUserCache(accessToken).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error("Failed to clear chat cache", err);
+      });
+    }
+
     setIsPortfolioLimitModalOpen(false);
     persistRiskState(null);
     setDraft("");
@@ -344,6 +356,7 @@ export default function ChatWide() {
     initialMessageRef.current = false;
     dispatch(resetChat());
   }, [
+    accessToken,
     dispatch,
     isAuth,
     portfolioCount,
@@ -408,12 +421,6 @@ export default function ChatWide() {
           recommendationWithId?.portfolio_id ?? recommendationWithId?.id ?? null;
         if (portfolioId) {
           appendMessage("ai", "portfolio_analysis_link", { portfolioId: String(portfolioId) });
-        } else {
-          appendMessage(
-            "ai",
-            "message",
-            "Детальная аналитика доступна на странице портфеля в разделе «Портфели».",
-          );
         }
 
         const normalizedUserId = userId.trim();
@@ -799,9 +806,6 @@ export default function ChatWide() {
       <div className="card-header flex flex-wrap items-center justify-between gap-3">
         <div>ИИ-помощник</div>
         <div className="flex flex-wrap items-center gap-2">
-          {typing ? (
-            <div className="text-xs text-muted">Ассистент думает?</div>
-          ) : null}
           {isAuth ? (
             <button
               type="button"
@@ -874,61 +878,76 @@ export default function ChatWide() {
               </div>
             </div>
 
-            <div className="sticky bottom-0 left-0 right-0 z-10 flex flex-col gap-2 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] pt-3 backdrop-blur sm:static sm:mt-3 sm:flex-row sm:items-center sm:border-t-0 sm:bg-transparent sm:pb-0 sm:pt-0">
-              {error ? (
-                <div className="text-xs text-danger">
-                  {error}. Попробуйте еще раз или обновите страницу.
-                </div>
-              ) : null}
-              <div className="relative w-full flex-1">
-                <textarea
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    const isComposing = (event.nativeEvent as { isComposing?: boolean }).isComposing;
-                    if (event.key === "Enter" && !event.shiftKey && !isComposing) {
-                      event.preventDefault();
-                      void handleSend();
-                    }
-                  }}
-                  rows={2}
-                  className="min-h-[3.5rem] w-full resize-none rounded-xl border border-border bg-white/5 px-3 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary sm:min-h-0"
-                  placeholder="Опишите вашу инвестиционную цель..."
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 transform items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={handleSend}
-                  disabled={!draft.trim()}
-                  aria-label="send message"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-4 w-4"
+            {isRiskSurveyActive ? null : hasPortfolioRecommendation ? (
+              isAuth ? (
+                <div className="sticky bottom-0 left-0 right-0 z-10 flex flex-col gap-2 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] pt-3 backdrop-blur sm:static sm:mt-3 sm:flex-row sm:items-center sm:border-t-0 sm:bg-transparent sm:pb-0 sm:pt-0">
+                  <button
+                    type="button"
+                    className="btn w-full sm:w-auto"
+                    onClick={handleStartNewPortfolio}
+                    disabled={portfolioCountLoading}
                   >
-                    <path d="M3 3l18 9-18 9 4-9-4-9z" />
-                    <path d="M11 12L3 3" />
-                    <path d="M11 12l-4 9" />
-                  </svg>
+                    Создать новый портфель
+                  </button>
+                </div>
+              ) : null
+            ) : (
+              <div className="sticky bottom-0 left-0 right-0 z-10 flex flex-col gap-2 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] pt-3 backdrop-blur sm:static sm:mt-3 sm:flex-row sm:items-center sm:border-t-0 sm:bg-transparent sm:pb-0 sm:pt-0">
+                {error ? (
+                  <div className="text-xs text-danger">
+                    {error}. Попробуйте еще раз или обновите страницу.
+                  </div>
+                ) : null}
+                <div className="relative w-full flex-1">
+                  <textarea
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      const isComposing = (event.nativeEvent as { isComposing?: boolean }).isComposing;
+                      if (event.key === "Enter" && !event.shiftKey && !isComposing) {
+                        event.preventDefault();
+                        void handleSend();
+                      }
+                    }}
+                    rows={2}
+                    className="min-h-[3.5rem] w-full resize-none rounded-xl border border-border bg-white/5 px-3 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary sm:min-h-0"
+                    placeholder="Опишите вашу инвестиционную цель..."
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 transform items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={handleSend}
+                    disabled={!draft.trim()}
+                    aria-label="send message"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-4 w-4"
+                    >
+                      <path d="M3 3l18 9-18 9 4-9-4-9z" />
+                      <path d="M11 12L3 3" />
+                      <path d="M11 12l-4 9" />
+                    </svg>
+                  </button>
+                </div>
+
+                <button
+                  className={classNames(
+                    "btn-secondary w-full sm:w-auto",
+                    isRecording ? "opacity-80" : undefined,
+                  )}
+                  onClick={() => (isRecording ? stopRecording() : startRecording())}
+                >
+                  {isRecording ? "🟥" : "🎙️"}
                 </button>
               </div>
-
-              <button
-                className={classNames(
-                  "btn-secondary w-full sm:w-auto",
-                  isRecording ? "opacity-80" : undefined,
-                )}
-                onClick={() => (isRecording ? stopRecording() : startRecording())}
-              >
-                {isRecording ? "🟥" : "🎙️"}
-              </button>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -1235,6 +1254,13 @@ function PortfolioMessage({
     return <div className="text-sm text-muted">Не удалось получить рекомендации по портфелю.</div>;
   }
 
+  const portfolioId =
+    typeof portfolio.portfolio_id === "string" || typeof portfolio.portfolio_id === "number"
+      ? String(portfolio.portfolio_id)
+      : typeof portfolio.id === "string" || typeof portfolio.id === "number"
+        ? String(portfolio.id)
+        : null;
+
   const formatMoney = (value: number, fractionDigits = 0) =>
     `${(Number.isFinite(value) ? value : 0).toLocaleString("ru-RU", {
       minimumFractionDigits: fractionDigits,
@@ -1285,7 +1311,10 @@ function PortfolioMessage({
 
         <div className="pt-2">
           {isAuth ? (
-            <Link to="/portfolios" className="btn w-full md:w-auto">
+            <Link
+              to={portfolioId ? `/portfolios/${portfolioId}` : "/portfolios"}
+              className="btn w-full md:w-auto"
+            >
               Перейти к сохранённым портфелям
             </Link>
           ) : (

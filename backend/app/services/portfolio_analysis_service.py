@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from datetime import datetime
 
 import dotenv
 from openai import OpenAI
@@ -50,7 +51,7 @@ class PortfolioAnalysisService:
     def analyze_portfolio(
         self, user_id: int, portfolio_id: int, db_session: Session
     ) -> str:
-        """Анализирует портфель пользователя из БД через LLM"""
+        """Анализирует портфель пользователя из БД через LLM и сохраняет объяснение"""
 
         print(f"Using model: {self.model}")
         if not db_session:
@@ -70,7 +71,10 @@ class PortfolioAnalysisService:
             )
 
         portfolio_response = portfolio_service.convert_db_to_response(portfolio)
-        portfolio_dict = portfolio_response.dict()
+
+        from fastapi.encoders import jsonable_encoder
+
+        portfolio_dict = jsonable_encoder(portfolio_response)
 
         max_retries = len(self.api_keys)
 
@@ -90,6 +94,10 @@ class PortfolioAnalysisService:
 
                 response = completion.choices[0].message.content
                 print(f"Response: {response}")
+
+                # Сохраняем объяснение в базу данных
+                self._save_analysis_explanation(db_session, portfolio_id, response)
+
                 return response
 
             except Exception as e:
@@ -128,3 +136,36 @@ class PortfolioAnalysisService:
                     raise e
 
         raise Exception(f"Failed after {max_retries} attempts")
+
+    def _save_analysis_explanation(
+        self, db_session: Session, portfolio_id: int, analysis_text: str
+    ):
+        """Сохраняет или обновляет анализ портфеля"""
+        try:
+            from app.models.portfolio import PortfolioCalculationExplanation
+
+            # Ищем существующий анализ
+            existing_analysis = (
+                db_session.query(PortfolioCalculationExplanation)
+                .filter(PortfolioCalculationExplanation.portfolio_id == portfolio_id)
+                .first()
+            )
+
+            if existing_analysis:
+                # Обновляем существующий
+                existing_analysis.explanation_text = analysis_text
+                existing_analysis.updated_at = datetime.now()
+                print(f"Анализ портфеля {portfolio_id} обновлен")
+            else:
+                # Создаем новый
+                explanation = PortfolioCalculationExplanation(
+                    portfolio_id=portfolio_id, explanation_text=analysis_text
+                )
+                db_session.add(explanation)
+                print(f"Анализ портфеля {portfolio_id} создан")
+
+            db_session.commit()
+
+        except Exception as e:
+            db_session.rollback()
+            print(f"Ошибка при сохранении анализа портфеля: {e}")

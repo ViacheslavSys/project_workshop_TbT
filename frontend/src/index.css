@@ -12,7 +12,7 @@
 .container-app { @apply max-w-7xl mx-auto px-4; }
 .card { @apply bg-panel border border-border rounded-2xl shadow-card; }
 .card-header { @apply px-5 pt-5 pb-3 text-sm text-muted; }
-.card-body { @apply px-5 pb-5; }
+.card-body { @apply px-5 pb-5 pt-5; }
 .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium bg-primary text-white hover:opacity-90 active:opacity-80 transition; }
 .input { @apply w-full bg-panel border border-border text-text rounded-xl px-3 py-2 text-sm placeholder:text-muted; }
 .tab { @apply px-3 py-1.5 rounded-lg text-sm text-muted hover:text-text hover:bg-white/5 transition; }
