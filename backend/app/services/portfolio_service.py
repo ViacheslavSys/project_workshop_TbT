@@ -651,7 +651,7 @@ class PortfolioService:
                     target_amount=portfolio.target_amount,
                     initial_capital=portfolio.initial_capital,
                     risk_profile=portfolio.risk_profile,
-                    created_at=portfolio.created_at,  
+                    created_at=portfolio.created_at,
                     updated_at=portfolio.updated_at,
                 )
             )
