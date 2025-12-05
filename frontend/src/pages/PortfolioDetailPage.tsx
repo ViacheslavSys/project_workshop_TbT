@@ -44,6 +44,45 @@ const reportFormulas = [
 const ensureFiniteNumber = (value?: number | null) =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
 
+const mapPifLabel = (value?: string | null) => {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "золото") return "ПИФ золото";
+  if (normalized === "недвижимость") return "ПИФ недвижимость";
+  return null;
+};
+
+const withPifLabel = (value?: string | null) => mapPifLabel(value) ?? value ?? "";
+
+const PIF_HINT_TEXT = "ПИФ — паевой инвестиционный фонд";
+
+const hasPifLabel = (value?: string | null) => Boolean(value && /пиф/i.test(value));
+
+const renderPifLabel = (value?: string | null) => {
+  const label = value ?? "";
+  if (!hasPifLabel(label)) return label || "—";
+  const match = label.match(/пиф/i);
+  if (!match) return label;
+
+  const before = label.slice(0, match.index);
+  const highlighted = label.slice(match.index, match.index + match[0].length);
+  const after = label.slice((match.index ?? 0) + match[0].length);
+
+  return (
+    <span className="inline-flex items-baseline gap-1 leading-tight">
+      {before ? <span>{before}</span> : null}
+      <span className="relative group cursor-help">
+        <span className="rounded border border-primary/30 bg-primary/10 px-1 text-[11px] font-semibold uppercase text-primary leading-none">
+          {highlighted}
+        </span>
+        <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black/80 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+          {PIF_HINT_TEXT}
+        </span>
+      </span>
+      {after ? <span>{after}</span> : null}
+    </span>
+  );
+};
+
 const formatMoney = (value?: number | null, digits = 0) =>
   `${ensureFiniteNumber(value).toLocaleString("ru-RU", {
     minimumFractionDigits: digits,
@@ -187,7 +226,7 @@ export default function PortfolioDetailPage() {
       return [];
     }
     return portfolio.composition.map((block) => ({
-      assetType: block.asset_type,
+      assetType: withPifLabel(block.asset_type),
       weight: block.target_weight ?? 0,
       amount: block.amount ?? 0,
     }));
@@ -201,13 +240,14 @@ export default function PortfolioDetailPage() {
 
     return portfolio.composition.map((block) => {
       const assets = Array.isArray(block.assets) ? block.assets : [];
+      const normalizedAssetType = withPifLabel(block.asset_type);
       return {
-        assetType: block.asset_type,
+        assetType: normalizedAssetType,
         targetWeight: block.target_weight,
         amount: block.amount,
         rows: assets.map((asset) => ({
           ticker: asset.ticker || block.asset_type,
-          name: asset.name || block.asset_type,
+          name: withPifLabel(asset.name || normalizedAssetType || block.asset_type),
           allocation:
             asset.weight ??
             block.target_weight ??
@@ -384,7 +424,7 @@ export default function PortfolioDetailPage() {
                   key={`${item.assetType}-${index}`}
                   className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
                 >
-                  <div className="text-muted">{item.assetType}</div>
+                  <div className="text-muted">{renderPifLabel(item.assetType)}</div>
                   <div className="text-lg font-semibold">
                     {formatPercent(item.weight)}
                   </div>
