@@ -150,8 +150,12 @@ function persistRiskState(state: PersistedRiskState | null) {
   }
 }
 
-const INITIAL_BOT_MESSAGE =
-  "Привет! Давайте сформулируем цель по SMART: расскажите про сумму, сроки, стартовый капитал и зачем вы копите. Я помогу сохранить всё в удобном виде.";
+const INITIAL_BOT_MESSAGE = `Привет! Я помогу оформить цель по SMART.
+1. Сколько хотите накопить.
+2. К какому сроку нужна сумма.
+3. Какой стартовый капитал уже есть.
+4. Зачем копите — на что именно.
+Ответьте по пунктам, и я сохраню их для вас.`;
 const steps = [
   { id: "goals" as const, label: "Цель по SMART" },
   { id: "risk" as const, label: "Риск-профиль" },
@@ -938,13 +942,35 @@ export default function ChatWide() {
                 </div>
 
                 <button
+                  type="button"
                   className={classNames(
-                    "btn-secondary w-full sm:w-auto",
-                    isRecording ? "opacity-80" : undefined,
+                    "group relative flex w-full items-center justify-center gap-3 rounded-full border border-primary/60 bg-primary/10 px-4 py-2 text-left text-sm font-semibold text-primary shadow-sm transition sm:w-auto sm:justify-start",
+                    "hover:bg-primary/15 hover:shadow-[0_8px_24px_rgba(34,211,238,0.15)] focus:outline-none focus:ring-2 focus:ring-primary/60",
+                    isRecording ? "border-primary bg-primary/20 text-white shadow-[0_0_0_4px_rgba(34,211,238,0.15)]" : undefined,
                   )}
                   onClick={() => (isRecording ? stopRecording() : startRecording())}
+                  aria-pressed={isRecording}
+                  aria-label={isRecording ? "Остановить запись" : "Записать голосовое сообщение"}
                 >
-                  {isRecording ? "🟥" : "🎙️"}
+                  <span className="relative flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white transition group-hover:scale-[1.04] group-active:scale-95">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.8}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-5 w-5"
+                    >
+                      <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" />
+                      <path d="M19 11v1a7 7 0 0 1-14 0v-1" />
+                      <path d="M12 19v3" />
+                    </svg>
+                    {isRecording ? (
+                      <span className="absolute inset-0 rounded-full border-2 border-white/50 opacity-80 animate-ping" aria-hidden="true" />
+                    ) : null}
+                  </span>
                 </button>
               </div>
             )}

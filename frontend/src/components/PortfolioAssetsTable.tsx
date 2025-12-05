@@ -99,6 +99,40 @@ const formatAssetTypeLabel = (value?: string) => {
   return value.charAt(0).toUpperCase() + value.slice(1);
 };
 
+const PIF_HINT_TEXT = "ПИФ — паевой инвестиционный фонд";
+
+const hasPifLabel = (value?: string | null) => Boolean(value && /пиф/i.test(value));
+
+const renderNameWithPifHint = (value?: string | null) => {
+  if (!value) return "—";
+  if (!hasPifLabel(value)) return value;
+  const match = value.match(/пиф/i);
+  if (!match) return value;
+
+  const matchIndex = match.index ?? 0;
+  const before = value.slice(0, matchIndex);
+  const highlighted = value.slice(matchIndex, matchIndex + match[0].length);
+  const after = value.slice(matchIndex + match[0].length);
+
+  return (
+    <span className="inline-flex items-baseline leading-tight">
+      {before ? <span>{before}</span> : null}
+      <span className="relative group cursor-help">
+        <span className="rounded border border-primary/30 bg-primary/10 px-1 text-[11px] font-semibold uppercase text-primary leading-none">
+          {highlighted}
+        </span>
+        <span className="pointer-events-none absolute left-0 top-full z-10 mt-1 hidden whitespace-nowrap rounded-md bg-black/80 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+          {PIF_HINT_TEXT}
+        </span>
+      </span>
+      {after ? <span>{after}</span> : null}
+    </span>
+  );
+};
+
+const renderAssetTypeLabel = (value?: string) =>
+  renderNameWithPifHint(formatAssetTypeLabel(value));
+
 export default function PortfolioAssetsTable({
   blocks,
   title = "Состав портфеля",
@@ -179,7 +213,7 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-text">
-              {formatAssetTypeLabel(block.assetType)}
+              {renderAssetTypeLabel(block.assetType)}
             </div>
           </div>
           <div className="text-xs text-muted text-right">
@@ -204,12 +238,12 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
       className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3"
       onMouseLeave={handleBlockLeave}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-semibold text-text">
-            {formatAssetTypeLabel(block.assetType)}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-text">
+              {renderAssetTypeLabel(block.assetType)}
+            </div>
           </div>
-        </div>
         <div className="text-xs text-muted text-right">
           {showWeight ? (
             <div>Доля: {formatPercent(block.targetWeight)}</div>
@@ -322,9 +356,7 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
                       style={{ backgroundColor: item.color }}
                       aria-hidden="true"
                     />
-                    <span className="truncate">
-                      {item.row.name || item.row.ticker || "-"}
-                    </span>
+                    <span className="truncate">{item.row.name || item.row.ticker || "-"}</span>
                     <span className="text-muted">
                       {formatShareLabel(item.share)}
                     </span>
