@@ -109,9 +109,10 @@ const renderNameWithPifHint = (value?: string | null) => {
   const match = value.match(/пиф/i);
   if (!match) return value;
 
-  const before = value.slice(0, match.index);
-  const highlighted = value.slice(match.index, match.index + match[0].length);
-  const after = value.slice((match.index ?? 0) + match[0].length);
+  const matchIndex = match.index ?? 0;
+  const before = value.slice(0, matchIndex);
+  const highlighted = value.slice(matchIndex, matchIndex + match[0].length);
+  const after = value.slice(matchIndex + match[0].length);
 
   return (
     <span className="inline-flex items-baseline leading-tight">

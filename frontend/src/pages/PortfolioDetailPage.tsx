@@ -61,9 +61,10 @@ const renderPifLabel = (value?: string | null) => {
   const match = label.match(/пиф/i);
   if (!match) return label;
 
-  const before = label.slice(0, match.index);
-  const highlighted = label.slice(match.index, match.index + match[0].length);
-  const after = label.slice((match.index ?? 0) + match[0].length);
+  const matchIndex = match.index ?? 0;
+  const before = label.slice(0, matchIndex);
+  const highlighted = label.slice(matchIndex, matchIndex + match[0].length);
+  const after = label.slice(matchIndex + match[0].length);
 
   return (
     <span className="inline-flex items-baseline gap-1 leading-tight">
