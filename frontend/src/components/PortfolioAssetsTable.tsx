@@ -288,9 +288,7 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
                             style={{ backgroundColor: item.color }}
                             aria-hidden="true"
                           />
-                          <span title={hasPifLabel(item.row.name) ? PIF_HINT_TEXT : undefined}>
-                            {renderNameWithPifHint(item.row.name)}
-                          </span>
+                          <span>{item.row.name || "—"}</span>
                         </div>
                       </td>
                       <td className="px-3 py-2 text-muted">
@@ -332,7 +330,7 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
                         ? "0 0 0 2px rgba(255,255,255,0.45)"
                         : undefined,
                     }}
-                    title={`${item.row.name || item.row.ticker || "-"}: ${formatShareLabel(item.share)}${hasPifLabel(item.row.name) ? ` · ${PIF_HINT_TEXT}` : ""}`}
+                    title={`${item.row.name || item.row.ticker || "-"}: ${formatShareLabel(item.share)}`}
                     onMouseEnter={makeHoverHandler(item.key)}
                   />
                 );
@@ -357,15 +355,7 @@ function AssetBlock({ block, hoveredKey, onHoverChange }: AssetBlockProps) {
                       style={{ backgroundColor: item.color }}
                       aria-hidden="true"
                     />
-                    <span
-                      className={classNames(
-                        hasPifLabel(item.row.name) ? "leading-tight" : "truncate",
-                      )}
-                      style={hasPifLabel(item.row.name) ? { overflow: "visible" } : undefined}
-                      title={hasPifLabel(item.row.name) ? PIF_HINT_TEXT : undefined}
-                    >
-                      {renderNameWithPifHint(item.row.name || item.row.ticker || "-")}
-                    </span>
+                    <span className="truncate">{item.row.name || item.row.ticker || "-"}</span>
                     <span className="text-muted">
                       {formatShareLabel(item.share)}
                     </span>

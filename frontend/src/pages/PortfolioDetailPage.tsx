@@ -54,9 +54,7 @@ const mapPifLabel = (value?: string | null) => {
 const withPifLabel = (value?: string | null) => mapPifLabel(value) ?? value ?? "";
 
 const PIF_HINT_TEXT = "ПИФ — паевой инвестиционный фонд";
-
 const hasPifLabel = (value?: string | null) => Boolean(value && /пиф/i.test(value));
-
 const renderPifLabel = (value?: string | null) => {
   const label = value ?? "";
   if (!hasPifLabel(label)) return label || "—";
