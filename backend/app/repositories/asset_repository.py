@@ -1,47 +1,51 @@
 # repositories/asset_repository.py
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.asset import Asset
 from app.services.moex_service import safe_float_convert
 
 
 class AssetRepository:
-    def get_all_assets(self, db_session: Session) -> List[Asset]:
-        """Получить все активы из БД"""
-        return db_session.query(Asset).all()
+    async def get_all_assets(self, db_session: AsyncSession) -> List[Asset]:
+        result = await db_session.execute(select(Asset))
+        return result.scalars().all()
 
-    def get_assets_by_type(self, db_session: Session, asset_type: str) -> List[Asset]:
-        """Получить активы по типу"""
-        if asset_type.lower() == 'облигация':
-            result = (
-                db_session.query(Asset)
-                .filter(Asset.type.ilike(f'%{asset_type}%'))
-                .all()
-            )
-        else:
-            result = db_session.query(Asset).filter(Asset.type == asset_type).all()
-
-        return result
-
-    def get_asset_by_ticker(self, db_session: Session, ticker: str) -> Optional[Asset]:
-        """Получить актив по тикеру"""
-        return db_session.query(Asset).filter(Asset.ticker == ticker).first()
-
-    def get_assets_by_tickers(
-        self, db_session: Session, tickers: List[str]
+    async def get_assets_by_type(
+        self, db_session: AsyncSession, asset_type: str
     ) -> List[Asset]:
-        """Получить активы по списку тикеров"""
-        return db_session.query(Asset).filter(Asset.ticker.in_(tickers)).all()
+        """Получить активы по типу асинхронно"""
+        if asset_type.lower() == 'облигация':
+            stmt = select(Asset).where(Asset.type.ilike(f'%{asset_type}%'))
+        else:
+            stmt = select(Asset).where(Asset.type == asset_type)
 
-    def add_or_update_many(self, session: Session, assets_data: list[dict]):
+        result = await db_session.execute(stmt)
+        return result.scalars().all()
+
+    async def get_asset_by_ticker(
+        self, db_session: AsyncSession, ticker: str
+    ) -> Optional[Asset]:
+        """Получить актив по тикеру асинхронно"""
+        stmt = select(Asset).where(Asset.ticker == ticker)
+        result = await db_session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_assets_by_tickers(
+        self, db_session: AsyncSession, tickers: List[str]
+    ) -> List[Asset]:
+        """Получить активы по списку тикеров асинхронно"""
+        stmt = select(Asset).where(Asset.ticker.in_(tickers))
+        result = await db_session.execute(stmt)
+        return result.scalars().all()
+
+    async def add_or_update_many(self, session: AsyncSession, assets_data: list[dict]):
         """Безопасное обновление с сохранением данных при ошибках"""
-
-        existing_assets = session.query(Asset).all()
-        existing_dict = {
-            asset.ticker: asset for asset in existing_assets
-        }  # Теперь по тикеру
+        # Получаем существующие активы
+        existing_assets = await self.get_all_assets(session)
+        existing_dict = {asset.ticker: asset for asset in existing_assets}
 
         successful_updates = []
 
@@ -58,15 +62,20 @@ class AssetRepository:
             if ticker in existing_dict:
                 asset = existing_dict[ticker]
                 if self._has_significant_changes(asset, asset_data):
-                    for key, value in asset_data.items():
-                        setattr(asset, key, value)
+                    # Обновляем существующий актив
+                    stmt = (
+                        update(Asset).where(Asset.ticker == ticker).values(**asset_data)
+                    )
+                    await session.execute(stmt)
                     successful_updates.append(ticker)
-
             else:
-                session.add(Asset(**asset_data))
+                # Добавляем новый актив
+                asset = Asset(**asset_data)
+                session.add(asset)
                 successful_updates.append(ticker)
 
-        session.commit()
+        await session.commit()
+        return successful_updates
 
     def _apply_fallback_prices(self, asset_data: dict, existing_asset: Asset):
         """Применяет fallback логику: если новые данные = 0, используем старые"""

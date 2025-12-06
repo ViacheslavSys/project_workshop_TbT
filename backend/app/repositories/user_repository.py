@@ -1,47 +1,58 @@
 from fastapi import HTTPException
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 
 
-def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
+async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100) -> list[User]:
     """Get paginated list of users"""
-    return db.query(User).offset(skip).limit(limit).all()
+    stmt = select(User).offset(skip).limit(limit)
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
-def get_active_users(db: Session) -> list[User]:
-    """Get only active users"""
-    return db.query(User).filter(User.is_active).all()
+async def get_active_users(db: AsyncSession) -> list[User]:
+    """Get only active users asynchronously"""
+    stmt = select(User).where(User.is_active)
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
-def get_user_by_id(db: Session, user_id: int) -> User | None:
-    """Get user by ID"""
-    return db.query(User).filter(User.id == user_id).first()
+async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
+    """Get user by ID asynchronously"""
+    stmt = select(User).where(User.id == user_id)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
-def get_user_by_username(db: Session, username: str) -> User | None:
-    """Get user by username (for authentication)"""
-    return db.query(User).filter(User.username == username).first()
+async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
+    """Get user by username asynchronously"""
+    stmt = select(User).where(User.username == username)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
-def get_user_by_email(db: Session, email: str) -> User | None:
-    """Get user by email (for uniqueness check)"""
-    return db.query(User).filter(User.email == email).first()
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    """Get user by email asynchronously"""
+    stmt = select(User).where(User.email == email)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
-def create_user(db: Session, user_in: UserCreate) -> User:
-    """Create new user with uniqueness validation"""
+async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
+    """Create new user with uniqueness validation asynchronously"""
     # Check username uniqueness
-    existing_user = get_user_by_username(db, user_in.username)
+    existing_user = await get_user_by_username(db, user_in.username)
     if existing_user:
         raise HTTPException(
             status_code=409, detail=f"Username '{user_in.username}' already exists"
         )
 
     # Check email uniqueness
-    existing_email = get_user_by_email(db, user_in.email)
+    existing_email = await get_user_by_email(db, user_in.email)
     if existing_email:
         raise HTTPException(
             status_code=409, detail=f"Email '{user_in.email}' already exists"
@@ -60,19 +71,21 @@ def create_user(db: Session, user_in: UserCreate) -> User:
             is_active=True,
         )
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
         return user
     except IntegrityError:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=409, detail="User with this username or email already exists"
         )
 
 
-def update_user(db: Session, user_id: int, user_in: UserUpdate) -> User | None:
-    """Update user information"""
-    user = get_user_by_id(db, user_id)
+async def update_user(
+    db: AsyncSession, user_id: int, user_in: UserUpdate
+) -> User | None:
+    """Update user information asynchronously"""
+    user = await get_user_by_id(db, user_id)
     if not user:
         return None
 
@@ -84,37 +97,56 @@ def update_user(db: Session, user_id: int, user_in: UserUpdate) -> User | None:
             update_data.pop('password')
         )
 
-    for field, value in update_data.items():
-        setattr(user, field, value)
+    # Используем update для атомарной операции
+    stmt = (
+        update(User)
+        .where(User.id == user_id)
+        .values(**update_data)
+        .execution_options(synchronize_session="fetch")
+    )
 
-    db.commit()
-    db.refresh(user)
-    return user
+    await db.execute(stmt)
+    await db.commit()
 
-
-def deactivate_user(db: Session, user_id: int) -> bool:
-    """Deactivate user (soft delete)"""
-    user = get_user_by_id(db, user_id)
-    if not user:
-        return False
-    user.is_active = False
-    db.commit()
-    return True
+    # Получаем обновленного пользователя
+    return await get_user_by_id(db, user_id)
 
 
-def activate_user(db: Session, user_id: int) -> bool:
-    """Activate user"""
-    user = get_user_by_id(db, user_id)
-    if not user:
-        return False
-    user.is_active = True
-    db.commit()
-    return True
+async def deactivate_user(db: AsyncSession, user_id: int) -> bool:
+    """Deactivate user (soft delete) asynchronously"""
+    stmt = (
+        update(User)
+        .where(User.id == user_id)
+        .values(is_active=False)
+        .execution_options(synchronize_session="fetch")
+    )
+
+    result = await db.execute(stmt)
+    await db.commit()
+
+    return result.rowcount > 0
 
 
-def authenticate_user(db: Session, username: str, password: str) -> User | None:
-    """Authenticate user by username and password"""
-    user = get_user_by_username(db, username)
+async def activate_user(db: AsyncSession, user_id: int) -> bool:
+    """Activate user asynchronously"""
+    stmt = (
+        update(User)
+        .where(User.id == user_id)
+        .values(is_active=True)
+        .execution_options(synchronize_session="fetch")
+    )
+
+    result = await db.execute(stmt)
+    await db.commit()
+
+    return result.rowcount > 0
+
+
+async def authenticate_user(
+    db: AsyncSession, username: str, password: str
+) -> User | None:
+    """Authenticate user by username and password asynchronously"""
+    user = await get_user_by_username(db, username)
     if not user or not user.is_active:
         return None
     if not user.verify_password(password):

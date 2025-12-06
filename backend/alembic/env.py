@@ -6,9 +6,9 @@ from app.core.config import settings
 from app.db.base import Base
 
 config = context.config
+sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
 
-
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", sync_url)
 
 
 fileConfig(config.config_file_name)
@@ -17,7 +17,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline():
     context.configure(
-        url=settings.DATABASE_URL,
+        url=sync_url,
         target_metadata=target_metadata,
         literal_binds=True,
     )

@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis_cache import cache
 from app.models.asset import Asset
@@ -28,18 +28,17 @@ from app.schemas.portfolio import (
 
 
 class PortfolioService:
-    def __init__(self, db_session: Session):
+    def __init__(self, db_session: AsyncSession):
         self.db_session = db_session
         self.inflation_repo = InflationRepository()
         self.asset_repo = AssetRepository()
         self.portfolio_repo = PortfolioRepository(db_session)
 
-    def calculate_future_value_with_inflation(
+    async def calculate_future_value_with_inflation(
         self, goal_sum: float, term_months: int
-    ) -> Tuple[float, float]:
-        """Расчет будущей стоимости с учетом инфляции"""
-
-        latest_inflation = self.inflation_repo.get_latest(self.db_session)
+    ) -> tuple[float, float]:
+        """Расчет будущей стоимости с учетом инфляции асинхронно"""
+        latest_inflation = await self.inflation_repo.get_latest(self.db_session)
 
         if not latest_inflation:
             annual_inflation_rate = 0.08
@@ -183,12 +182,12 @@ class PortfolioService:
         )
         return allocation
 
-    def select_stocks_by_risk(
+    async def select_stocks_by_risk(
         self, risk_profile: str, stock_budget: float
     ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
         """Подбор акций по риск-профилю"""
 
-        all_stocks = self.asset_repo.get_assets_by_type(self.db_session, 'акция')
+        all_stocks = await self.asset_repo.get_assets_by_type(self.db_session, 'акция')
 
         strategies = {
             'conservative': ['SBER', 'GAZP', 'LKOH'],
@@ -242,12 +241,14 @@ class PortfolioService:
 
         return result
 
-    def select_bonds_by_term(
+    async def select_bonds_by_term(
         self, term_years: float, bond_budget: float
     ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
         """Подбор облигаций по сроку инвестирования"""
 
-        all_bonds = self.asset_repo.get_assets_by_type(self.db_session, 'облигация')
+        all_bonds = await self.asset_repo.get_assets_by_type(
+            self.db_session, 'облигация'
+        )
 
         if not all_bonds:
             return []
@@ -308,12 +309,14 @@ class PortfolioService:
 
         return result
 
-    def select_etf_assets(
+    async def select_etf_assets(
         self, asset_type: str, budget: float
     ) -> List[AssetAllocationSchema]:  # ← Используйте Schema
         """Подбор ETF активов (золото, недвижимость)"""
 
-        etf_assets = self.asset_repo.get_assets_by_type(self.db_session, asset_type)
+        etf_assets = await self.asset_repo.get_assets_by_type(
+            self.db_session, asset_type
+        )
 
         if not etf_assets or budget <= 0:
             return []
@@ -369,7 +372,7 @@ class PortfolioService:
 
         return final_return
 
-    def build_portfolio_recommendation(
+    async def build_portfolio_recommendation(
         self,
         future_value: float,
         initial_capital: float,
@@ -391,13 +394,13 @@ class PortfolioService:
             budget = future_value * target_weight
 
             if asset_type == 'акции':
-                assets = self.select_stocks_by_risk(risk_profile, budget)
+                assets = await self.select_stocks_by_risk(risk_profile, budget)
             elif asset_type == 'облигации':
-                assets = self.select_bonds_by_term(term_years, budget)
+                assets = await self.select_bonds_by_term(term_years, budget)
             elif asset_type == 'золото':
-                assets = self.select_etf_assets('золото', budget)
+                assets = await self.select_etf_assets('золото', budget)
             elif asset_type == 'недвижимость':
-                assets = self.select_etf_assets('недвижимость', budget)
+                assets = await self.select_etf_assets('недвижимость', budget)
             else:
                 assets = []
 
@@ -467,7 +470,7 @@ class PortfolioService:
             step_by_step_plan=step_by_step_plan,
         )
 
-    def calculate_portfolio(self, user_id: str) -> PortfolioCalculationResponse:
+    async def calculate_portfolio(self, user_id: str) -> PortfolioCalculationResponse:
         """Основной метод расчета полного инвестиционного плана"""
 
         goal_data = cache.get_json(f"user:{user_id}:llm_goal")
@@ -483,11 +486,11 @@ class PortfolioService:
         smart_goal = goal_data["reason"]
         risk_profile = profile["profile"]
 
-        future_value, inflation_rate = self.calculate_future_value_with_inflation(
+        future_value, inflation_rate = await self.calculate_future_value_with_inflation(
             goal_sum=target_amount, term_months=term_months
         )
 
-        recommendation = self.build_portfolio_recommendation(
+        recommendation = await self.build_portfolio_recommendation(
             future_value=future_value,
             initial_capital=initial_capital,
             term_months=term_months,
@@ -520,13 +523,14 @@ class PortfolioService:
 
         return portfolio_response
 
-    def create_portfolio(
+    async def create_portfolio(
         self,
         portfolio_data: PortfolioCalculationResponse,
         user_id: int,
         portfolio_name: str = "Основной портфель",
     ) -> Portfolio:
         """Создание портфеля в базе данных с пошаговым планом"""
+        from sqlalchemy import select
 
         # Создаем основной объект портфеля
         portfolio = Portfolio(
@@ -547,7 +551,7 @@ class PortfolioService:
         )
 
         self.db_session.add(portfolio)
-        self.db_session.flush()
+        await self.db_session.flush()
 
         # Создаем monthly_payment
         monthly_payment = MonthlyPayment(
@@ -580,15 +584,14 @@ class PortfolioService:
                 amount=comp.amount,
             )
             self.db_session.add(portfolio_composition)
-            self.db_session.flush()
+            await self.db_session.flush()
 
             # Добавляем распределения активов
             for asset_alloc in comp.assets:
-                asset = (
-                    self.db_session.query(Asset)
-                    .filter(Asset.ticker == asset_alloc.ticker)
-                    .first()
-                )
+                # АСИНХРОННЫЙ ЗАПРОС вместо query
+                stmt = select(Asset).where(Asset.ticker == asset_alloc.ticker)
+                result = await self.db_session.execute(stmt)
+                asset = result.scalar_one_or_none()
 
                 if asset:
                     asset_allocation = AssetAllocationModel(  # ← Используйте Model
@@ -619,7 +622,7 @@ class PortfolioService:
                 total_steps=len(portfolio_data.recommendation.step_by_step_plan.steps),
             )
             self.db_session.add(step_plan)
-            self.db_session.flush()
+            await self.db_session.flush()
 
             # Добавляем шаги плана
             for step_data in portfolio_data.recommendation.step_by_step_plan.steps:
@@ -630,7 +633,7 @@ class PortfolioService:
                     description=step_data.description,
                 )
                 self.db_session.add(plan_step)
-                self.db_session.flush()
+                await self.db_session.flush()
 
                 # Добавляем действия для шага
                 for action_order, action_text in enumerate(step_data.actions, 1):
@@ -641,12 +644,12 @@ class PortfolioService:
                     )
                     self.db_session.add(step_action)
 
-        self.db_session.commit()
+        await self.db_session.commit()
         return portfolio
 
-    def get_user_portfolios_from_db(self, user_id: int) -> list:
+    async def get_user_portfolios_from_db(self, user_id: int) -> list:
         """Получение всех портфелей пользователя из БД"""
-        portfolios = self.portfolio_repo.get_user_portfolios(user_id)
+        portfolios = await self.portfolio_repo.get_user_portfolios(user_id)
 
         portfolio_summaries = []
         for portfolio in portfolios:
@@ -871,7 +874,7 @@ class PortfolioService:
 
         return purchase_plan
 
-    def save_portfolio_to_db(
+    async def save_portfolio_to_db(
         self,
         session_token: str,  # session_token для Redis
         user_id: int,  # authenticated user_id из JWT
@@ -890,11 +893,13 @@ class PortfolioService:
                 "🔍 [DEBUG] Получение данных из Redis для ключа: "
                 f"user:{session_token}:portfolio"
             )
-            portfolio_data = self.calculate_portfolio(session_token)
+            portfolio_data = await self.calculate_portfolio(session_token)
 
             # Сохраняем в БД с authenticated user_id
             print("🔍 [DEBUG] Начало сохранения в БД...")
-            portfolio = self.create_portfolio(portfolio_data, user_id, portfolio_name)
+            portfolio = await self.create_portfolio(
+                portfolio_data, user_id, portfolio_name
+            )
 
             print(f"✅ [DEBUG] Портфель успешно сохранен в БД с ID: {portfolio.id}")
 
@@ -1015,12 +1020,12 @@ class PortfolioService:
             analysis=analysis_text,
         )
 
-    def get_portfolio_for_analysis(
+    async def get_portfolio_for_analysis(
         self, portfolio_id: int, user_id: int
     ) -> PortfolioCalculationResponse:
         """Получение портфеля для анализа с проверкой прав доступа"""
 
-        portfolio = self.portfolio_repo.get_portfolio_by_id(portfolio_id, user_id)
+        portfolio = await self.portfolio_repo.get_portfolio_by_id(portfolio_id, user_id)
 
         if not portfolio:
             raise ValueError(f"Портфель {portfolio_id} не найден или нет доступа")
