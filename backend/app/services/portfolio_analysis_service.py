@@ -103,7 +103,6 @@ class PortfolioAnalysisService:
                 response = completion.choices[0].message.content
                 print(f"Response: {response}")
 
-                # Сохраняем объяснение в базу данных
                 await self._save_analysis_explanation(
                     db_session, portfolio_id_int, response
                 )
