@@ -16,6 +16,16 @@ type LocationState = {
   summary?: PortfolioSummary | null;
 };
 
+type AllocationStackItem = {
+  key: string;
+  label: string;
+  amount: number;
+  weight: number;
+  weightShare: number;
+  amountShare: number;
+  color: string;
+};
+
 const reportFormulas = [
   {
     title: "Ожидаемая доходность портфеля",
@@ -39,6 +49,17 @@ const reportFormulas = [
     latex: "Sharpe = \\frac{E[R_p] - R_f}{\\sigma_p}",
     variables: [{ name: "R_f", meaning: "безрисковая ставка" }],
   },
+];
+
+const allocationDistributionColors = [
+  "#60A5FA",
+  "#34D399",
+  "#F97316",
+  "#A855F7",
+  "#F87171",
+  "#2DD4BF",
+  "#FACC15",
+  "#FB7185",
 ];
 
 const ensureFiniteNumber = (value?: number | null) =>
@@ -269,6 +290,10 @@ export default function PortfolioDetailPage() {
     return Array.isArray(steps) ? steps : [];
   }, [portfolio]);
 
+  const [allocationMode, setAllocationMode] = useState<"weight" | "amount">(
+    "weight",
+  );
+
   const planGeneratedAt = useMemo(() => {
     if (!portfolio?.step_by_step_plan?.generated_at) {
       return "";
@@ -280,6 +305,66 @@ export default function PortfolioDetailPage() {
     const formatted = formatDateTime(portfolio?.updated_at);
     return formatted || "нет данных";
   }, [portfolio?.updated_at]);
+
+  const allocationStackItems = useMemo<AllocationStackItem[]>(() => {
+    const blocksSource = assetBlocks.length
+      ? assetBlocks
+      : allocationSummary.map((item) => ({
+          assetType: item.assetType || "",
+          targetWeight: item.weight,
+          amount: item.amount,
+          rows: [],
+        }));
+
+    if (!blocksSource.length) {
+      return [];
+    }
+
+    const items = blocksSource.map((block, index) => {
+      const rows = Array.isArray(block.rows) ? block.rows : [];
+      const rowsAmount = rows.reduce(
+        (sum, row) => sum + ensureFiniteNumber(row.amount),
+        0,
+      );
+      const amount =
+        rowsAmount > 0
+          ? rowsAmount
+          : ensureFiniteNumber(block.amount ?? (block as { amount?: number }).amount);
+      const weight = ensureFiniteNumber(
+        block.targetWeight ??
+          (block as { weight?: number; target_weight?: number }).weight ??
+          (block as { target_weight?: number }).target_weight,
+      );
+
+      return {
+        key: `${block.assetType || "block"}-${index}`,
+        label: block.assetType || `Класс ${index + 1}`,
+        amount,
+        weight,
+        color: allocationDistributionColors[index % allocationDistributionColors.length],
+      };
+    });
+
+    const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
+    const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+    const defaultShare = items.length ? 1 / items.length : 0;
+
+    return items.map((item) => {
+      const weightShare =
+        totalWeight > 0 ? item.weight / totalWeight : defaultShare;
+      const amountShare =
+        totalAmount > 0 ? item.amount / totalAmount : weightShare;
+
+      return {
+        ...item,
+        weightShare: Number.isFinite(weightShare) ? Math.max(weightShare, 0) : 0,
+        amountShare: Number.isFinite(amountShare) ? Math.max(amountShare, 0) : 0,
+      };
+    });
+  }, [assetBlocks, allocationSummary]);
+
+  const hasAmountData = allocationStackItems.some((item) => item.amount > 0);
+  const activeAllocationMode = hasAmountData ? allocationMode : "weight";
 
   if (loading) {
     return (
@@ -405,37 +490,116 @@ export default function PortfolioDetailPage() {
         />
       </section>
 
-      <section className="grid gap-3 lg:grid-cols-2">
-        <PortfolioInfoPanel updatedAtLabel={updatedAtLabel} className="h-full" />
-        <section className="card h-full">
-          <div className="card-header flex items-center justify-between">
-            <div>
-              <div className="text-lg font-semibold">Разбивка по классам активов</div>
-              <p className="text-sm text-muted">
-                Рекомендованные доли классов активов в итоговом портфеле
-              </p>
-            </div>
+      <PortfolioInfoPanel updatedAtLabel={updatedAtLabel} />
+
+      <section className="card h-full">
+        <div className="card-header flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">Разбивка по классам активов</div>
+            <p className="text-sm text-muted">
+              Рекомендованные доли и примерная стоимость классов активов в портфеле
+            </p>
           </div>
-          <div className="card-body flex flex-wrap gap-3">
-            {allocationSummary.length ? (
-              allocationSummary.map((item, index) => (
-                <div
-                  key={`${item.assetType}-${index}`}
-                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
-                >
-                  <div className="text-muted">{renderPifLabel(item.assetType)}</div>
-                  <div className="text-lg font-semibold">
-                    {formatPercent(item.weight)}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-muted">
-                Нет данных о распределении активов.
-              </p>
-            )}
+          <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 p-1 text-xs">
+            <button
+              type="button"
+              className={`rounded-full px-3 py-1 font-semibold transition ${activeAllocationMode === "weight" ? "bg-white/10 text-text" : "text-muted hover:text-text"}`}
+              onClick={() => setAllocationMode("weight")}
+              aria-pressed={activeAllocationMode === "weight"}
+            >
+              Доля
+            </button>
+            <button
+              type="button"
+              className={`rounded-full px-3 py-1 font-semibold transition ${
+                activeAllocationMode === "amount"
+                  ? "bg-white/10 text-text"
+                  : "text-muted hover:text-text"
+              } ${hasAmountData ? "" : "opacity-60 cursor-not-allowed"}`}
+              onClick={() => hasAmountData && setAllocationMode("amount")}
+              aria-pressed={activeAllocationMode === "amount"}
+              disabled={!hasAmountData}
+            >
+              Сумма
+            </button>
           </div>
-        </section>
+        </div>
+        <div className="card-body space-y-4">
+          {allocationStackItems.length ? (
+            <>
+              <div className="flex h-12 w-full items-stretch overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                {allocationStackItems.map((item) => {
+                  const share =
+                    activeAllocationMode === "amount"
+                      ? item.amountShare
+                      : item.weightShare;
+                  return (
+                    <div
+                      key={`${item.key}-segment`}
+                      className="h-full transition-all"
+                      style={{
+                        flexGrow: share > 0 ? share : 0,
+                        minWidth: share > 0 ? 14 : 0,
+                        backgroundColor: item.color,
+                      }}
+                      title={`${item.label}: ${
+                        activeAllocationMode === "amount"
+                          ? formatMoney(item.amount)
+                          : formatPercent(share)
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {allocationStackItems.map((item, index) => {
+                  const share =
+                    activeAllocationMode === "amount"
+                      ? item.amountShare
+                      : item.weightShare;
+                  const secondaryShare =
+                    activeAllocationMode === "amount"
+                      ? formatPercent(item.weightShare)
+                      : formatMoney(item.amount);
+
+                  return (
+                    <div
+                      key={`${item.key}-legend-${index}`}
+                      className="flex min-w-[180px] max-w-[260px] flex-1 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1 leading-tight">
+                        <div className="truncate text-sm font-semibold">
+                          {renderPifLabel(item.label)}
+                        </div>
+                        <div className="text-[11px] text-muted">
+                          {activeAllocationMode === "amount"
+                            ? `Доля: ${secondaryShare}`
+                            : `Сумма: ${secondaryShare}`}
+                        </div>
+                      </div>
+                      <div className="text-right text-sm font-semibold text-text">
+                        {activeAllocationMode === "amount"
+                          ? formatMoney(item.amount)
+                          : formatPercent(share)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted">
+              Нет данных о распределении активов.
+            </p>
+          )}
+        </div>
       </section>
 
       <RestrictedPortfolioDetails restricted={!canViewFullDetails}>
@@ -598,42 +762,41 @@ function PortfolioInfoPanel({
 
   return (
     <section
-      className={`card border-primary/30 bg-primary/5 ${className}`.trim()}
+      className={`flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs sm:text-sm ${className}`.trim()}
+      aria-label="Источники данных"
     >
-      <div className="card-header text-lg font-semibold">Истточники данных</div>
-      <div className="card-body grid gap-3 sm:grid-cols-3">
-        <InfoTile
-          label="Откуда цены"
-          value={
-            <a
-              href="https://www.moex.com"
-              target="_blank"
-              rel="noreferrer noopener"
-              className="text-primary hover:opacity-80"
-            >
-              MOEX
-            </a>
-          }
-        />
-        <InfoTile
-          label="Откуда инфляция"
-          value={
-            <a
-              href="https://www.cbr.ru"
-              target="_blank"
-              rel="noreferrer noopener"
-              className="text-primary hover:opacity-80"
-            >
-              ЦБ РФ
-            </a>
-          }
-        />
-        <InfoTile
-          label="Дата обновления портфеля"
-          value={updatedAtLabel}
-          muted={isUpdatedAtMissing}
-        />
-      </div>
+      <span className="text-muted">Источники:</span>
+      <InfoTile
+        label="Цены"
+        value={
+          <a
+            href="https://www.moex.com"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-primary hover:opacity-80"
+          >
+            MOEX
+          </a>
+        }
+      />
+      <InfoTile
+        label="Инфляция"
+        value={
+          <a
+            href="https://www.cbr.ru"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-primary hover:opacity-80"
+          >
+            ЦБ РФ
+          </a>
+        }
+      />
+      <InfoTile
+        label="Обновлено"
+        value={updatedAtLabel}
+        muted={isUpdatedAtMissing}
+      />
     </section>
   );
 }
@@ -648,15 +811,15 @@ function InfoTile({
   muted?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-      <p className="text-xs uppercase text-muted">{label}</p>
-      <p
-        className={`text-sm font-semibold ${
-          muted ? "text-muted" : "text-text"
-        }`}
-      >
+    <div
+      className={`inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/10 px-3 py-1 ${
+        muted ? "text-muted" : "text-text"
+      }`}
+    >
+      <span className="text-muted">{label}:</span>
+      <span className={`font-semibold ${muted ? "text-muted" : "text-text"}`}>
         {value}
-      </p>
+      </span>
     </div>
   );
 }
@@ -704,7 +867,8 @@ function SummaryCard({
 }
 
 function MonthlyPlanCard({
-  detail
+  detail,
+  restricted,
 }: {
   detail: MonthlyPaymentDetail;
   restricted: boolean;
@@ -713,54 +877,57 @@ function MonthlyPlanCard({
   const totalMonths = Math.max(0, Math.round(ensureFiniteNumber(detail.total_months)));
   const totalYears = totalMonths ? totalMonths / 12 : 0;
   const totalContribution = monthlyPayment * totalMonths;
-  const annuityFactor = ensureFiniteNumber(detail.annuity_factor);
+  const futureCapital = ensureFiniteNumber(detail.future_capital);
   const totalMonthsLabel = totalMonths
     ? `${totalMonths.toLocaleString("ru-RU")} мес.${totalYears ? ` (${totalYears.toFixed(1)} лет)` : ""}`
-    : "—";
+    : "-";
 
-  const stats: Array<{ label: string; value: string; hint?: string }> = [
+  const stats: Array<{ label: string; value: string }> = [
     {
       label: "Срок накопления",
       value: totalMonthsLabel,
-      hint: "Период, на который рассчитан ежемесячный план",
     },
     {
-      label: "Накопите к концу периода",
-      value: formatMoney(detail.future_capital),
-      hint: "Прогнозируемый капитал при соблюдении графика",
+      label: "Итог по модели",
+      value: formatMoney(futureCapital),
     },
     {
-      label: "Сумма взносов за период",
+      label: "Всего внесёте",
       value: formatMoney(totalContribution),
-      hint: "Регулярные взносы без стартового капитала и доходности",
     },
     {
-      label: "Месячная доходность модели",
+      label: "Доходность в расчёте",
       value: formatPercent(detail.monthly_rate, 2),
-      hint: "Используется при расчёте ежемесячного платежа",
-    },
-    {
-      label: "Ануитетный коэффициент",
-      value: annuityFactor ? annuityFactor.toFixed(2) : "—",
-      hint: "Во сколько раз взнос меньше цели",
     },
   ];
 
   return (
-    <section className="card space-y-1">
-      <div className="card-header flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between !pt-4 !pb-2">
-        <div className="text-lg font-semibold">Месячный план взносов</div>
+    <section className="card">
+      <div className="card-header flex flex-col gap-1 md:flex-row md:items-center md:justify-between !py-3">
+        <div className="flex flex-col gap-1">
+          <div className="text-lg font-semibold">Месячный план взносов</div>
+          <p className="text-xs text-muted">
+            {totalMonthsLabel !== "-" ? `${formatMoney(monthlyPayment)} ежемесячно · ${totalMonthsLabel}` : "Фиксированный ежемесячный платёж"}
+          </p>
+        </div>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-xs uppercase text-muted">Платёж</span>
+          <span className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-base font-semibold text-text">
+            <SensitiveValue restricted={restricted}>
+              {formatMoney(monthlyPayment)}
+            </SensitiveValue>
+          </span>
+        </div>
       </div>
-      <div className="card-body !pt-4 !pb-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="card-body space-y-3 !pt-3 !pb-3">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2"
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
             >
               <p className="text-xs uppercase text-muted">{stat.label}</p>
-              <p className="text-base font-semibold text-text">{stat.value}</p>
-              {stat.hint ? <p className="text-xs text-muted">{stat.hint}</p> : null}
+              <p className="text-sm font-semibold text-text">{stat.value}</p>
             </div>
           ))}
         </div>
