@@ -129,6 +129,62 @@ const formatDateTime = (value?: string | null) => {
   });
 };
 
+const escapeICSText = (value: string) =>
+  value
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+
+const toICSDateTimeUTC = (date: Date) =>
+  date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+const getCalendarStartDate = () => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1, 8, 0, 0));
+};
+
+const buildMonthlyContributionICS = (
+  detail: MonthlyPaymentDetail,
+  goalTitle?: string,
+) => {
+  const start = getCalendarStartDate();
+  const end = new Date(start.getTime() + 30 * 60 * 1000);
+
+  const title = `Ежемесячный взнос — ${goalTitle || "портфель"}`;
+  const description = [
+    `Сумма: ${ensureFiniteNumber(detail.monthly_payment).toLocaleString("ru-RU")} ₽`,
+    `Длительность: ${ensureFiniteNumber(detail.total_months)} мес.`,
+    "Создано в TBT портфолио",
+  ].join(" · ");
+
+  const uid =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `tbt-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//TBT//Portfolio//RU",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${toICSDateTimeUTC(new Date())}`,
+    `DTSTART:${toICSDateTimeUTC(start)}`,
+    `DTEND:${toICSDateTimeUTC(end)}`,
+    `SUMMARY:${escapeICSText(title)}`,
+    `DESCRIPTION:${escapeICSText(description)}`,
+    `RRULE:FREQ=MONTHLY;COUNT=${Math.max(
+      1,
+      Math.round(ensureFiniteNumber(detail.total_months)),
+    )}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+};
+
 export default function PortfolioDetailPage() {
   const params = useParams<{ id: string }>();
   const location = useLocation();
@@ -608,6 +664,7 @@ export default function PortfolioDetailPage() {
             <MonthlyPlanCard
               detail={monthlyPlanDetail}
               restricted={sensitiveInfoRestricted}
+              goal={portfolio.smart_goal}
             />
           ) : null}
 
@@ -869,9 +926,11 @@ function SummaryCard({
 function MonthlyPlanCard({
   detail,
   restricted,
+  goal,
 }: {
   detail: MonthlyPaymentDetail;
   restricted: boolean;
+  goal?: string;
 }) {
   const monthlyPayment = ensureFiniteNumber(detail.monthly_payment);
   const totalMonths = Math.max(0, Math.round(ensureFiniteNumber(detail.total_months)));
@@ -881,6 +940,19 @@ function MonthlyPlanCard({
   const totalMonthsLabel = totalMonths
     ? `${totalMonths.toLocaleString("ru-RU")} мес.${totalYears ? ` (${totalYears.toFixed(1)} лет)` : ""}`
     : "-";
+
+  const handleAddToCalendar = useCallback(() => {
+    const icsContent = buildMonthlyContributionICS(detail, goal);
+    const blob = new Blob([icsContent], { type: "text/calendar" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "monthly-contribution.ics";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [detail, goal]);
 
   const stats: Array<{ label: string; value: string }> = [
     {
@@ -910,13 +982,30 @@ function MonthlyPlanCard({
             {totalMonthsLabel !== "-" ? `${formatMoney(monthlyPayment)} ежемесячно · ${totalMonthsLabel}` : "Фиксированный ежемесячный платёж"}
           </p>
         </div>
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-xs uppercase text-muted">Платёж</span>
-          <span className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-base font-semibold text-text">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div className="group relative inline-flex">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleAddToCalendar}
+              aria-describedby="add-to-calendar-tip"
+            >
+              В календарь
+            </button>
+            <span
+              id="add-to-calendar-tip"
+              role="tooltip"
+              className="pointer-events-none absolute left-1/2 top-full z-10 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black/75 px-2 py-1 text-[11px] leading-tight text-white shadow-lg group-hover:block"
+            >
+              Скачает ICS с повтором по месяцам
+            </span>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-base font-semibold text-text">
+            <span className="text-xs uppercase text-muted">Платёж</span>
             <SensitiveValue restricted={restricted}>
               {formatMoney(monthlyPayment)}
             </SensitiveValue>
-          </span>
+          </div>
         </div>
       </div>
       <div className="card-body space-y-3 !pt-3 !pb-3">
