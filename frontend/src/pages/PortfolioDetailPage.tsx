@@ -26,31 +26,6 @@ type AllocationStackItem = {
   color: string;
 };
 
-const reportFormulas = [
-  {
-    title: "Ожидаемая доходность портфеля",
-    latex: "E[R_p] = \\sum_i w_i \\cdot E[R_i]",
-    variables: [
-      { name: "w_i", meaning: "доля i‑го актива в портфеле" },
-      { name: "E[R_i]", meaning: "ожидаемая доходность i‑го актива" },
-    ],
-  },
-  {
-    title: "Риск портфеля (стандартное отклонение)",
-    latex:
-      "\\sigma_p = \\sqrt{\\sum_i w_i^2 \\sigma_i^2 + 2 \\sum_{i<j} w_i w_j \\sigma_i \\sigma_j \\rho_{ij}}",
-    variables: [
-      { name: "\\sigma_i", meaning: "волатильность i‑го актива" },
-      { name: "\\rho_{ij}", meaning: "корреляция пар активов i и j" },
-    ],
-  },
-  {
-    title: "Коэффициент Шарпа",
-    latex: "Sharpe = \\frac{E[R_p] - R_f}{\\sigma_p}",
-    variables: [{ name: "R_f", meaning: "безрисковая ставка" }],
-  },
-];
-
 const allocationDistributionColors = [
   "#60A5FA",
   "#34D399",
@@ -799,7 +774,6 @@ export default function PortfolioDetailPage() {
                 ? "AI готовит пояснения по расчётам..."
                 : analysis
             }
-            formulas={reportFormulas}
           />
         )}
       </section>
