@@ -28,9 +28,12 @@ urllib3==2.5.0
 idna==3.10
 python-dotenv
 openai
+async-openai
 
 pydantic
 celery
 bs4
+aiohttp
 
 bcrypt
+asyncpg>=0.29.0 

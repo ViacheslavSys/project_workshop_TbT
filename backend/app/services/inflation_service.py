@@ -2,7 +2,7 @@ import datetime
 
 import requests
 from bs4 import BeautifulSoup
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.repositories.inflation_repository import InflationRepository
 
@@ -27,19 +27,19 @@ def fetch_current_inflation() -> tuple[datetime.date, float]:
     return date, value
 
 
-async def update_inflation(session: AsyncSession):
+def update_inflation(session: Session):
     repo = InflationRepository()
 
     try:
         date, value = fetch_current_inflation()
-        await repo.add(session, date, value)
+        repo.add(session, date, value)
         print(f"Инфляция обновлена: {value}% ({date})")
 
     except Exception as e:
         print(f"Ошибка при парсинге инфляции: {e}")
-        prev = await repo.get_latest(session)
+        prev = repo.get_latest(session)
         if prev:
-            await repo.add(session, datetime.date.today(), prev.value)
+            repo.add(session, datetime.date.today(), prev.value)
             print(f"Использовано предыдущее значение: {prev.value}% ({prev.date})")
         else:
             print("Нет данных об инфляции — нечего подставлять.")

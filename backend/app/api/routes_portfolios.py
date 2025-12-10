@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
 from app.core.redis_cache import cache
@@ -22,14 +22,14 @@ router = APIRouter(prefix="/portfolios", tags=["portfolios"])
 
 @router.post("/calculate", response_model=PortfolioCalculationResponse)
 async def calculate_portfolio(
-    request: PortfolioCalculationRequest, db: Session = Depends(get_db)
+    request: PortfolioCalculationRequest, db: AsyncSession = Depends(get_db)
 ):
     """
     Расчет целевой стоимости с учетом инфляции и формирование портфеля
     """
     try:
         portfolio_service = PortfolioService(db)
-        result = portfolio_service.calculate_portfolio(request.user_id)
+        result = await portfolio_service.calculate_portfolio(request.user_id)
         return result
 
     except ValueError as e:
@@ -41,14 +41,14 @@ async def calculate_portfolio(
 @router.post("/analyze", response_model=PortfolioAnalysisResponse)
 async def analyze_user_portfolio(
     request: PortfolioAnalysisRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Анализирует портфель пользователя через LLM"""
     try:
         service = PortfolioAnalysisService()
 
-        analysis_result = service.analyze_portfolio(
+        analysis_result = await service.analyze_portfolio(
             user_id=current_user.id, portfolio_id=request.portfolio_id, db_session=db
         )
 
@@ -65,7 +65,7 @@ async def analyze_user_portfolio(
 @router.post("/save-to-db", response_model=PortfolioSaveResponse)
 async def save_portfolio_to_db(
     request: PortfolioSaveRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -76,7 +76,7 @@ async def save_portfolio_to_db(
 
         user_id_int = int(request.user_id)
 
-        result = portfolio_service.save_portfolio_to_db(
+        result = await portfolio_service.save_portfolio_to_db(
             session_token=user_id_int,  # session_token из Redis
             user_id=current_user.id,  # authenticated user_id из JWT
             portfolio_name=request.portfolio_name,
@@ -94,14 +94,16 @@ async def save_portfolio_to_db(
 
 @router.get("/user", response_model=PortfolioListResponse)
 async def get_user_portfolios(
-    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """
     Получение списка всех портфелей пользователя (только основные данные)
     """
     try:
         portfolio_service = PortfolioService(db)
-        portfolios = portfolio_service.get_user_portfolios_from_db(current_user.id)
+        portfolios = await portfolio_service.get_user_portfolios_from_db(
+            current_user.id
+        )
 
         # Преобразуем в список PortfolioSummary
         portfolio_summaries = []
@@ -128,7 +130,7 @@ async def get_user_portfolios(
 @router.get("/{portfolio_id}", response_model=PortfolioCalculationResponse)
 async def get_portfolio_detail(
     portfolio_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -137,7 +139,7 @@ async def get_portfolio_detail(
     try:
         portfolio_service = PortfolioService(db)
 
-        portfolio = portfolio_service.portfolio_repo.get_portfolio_by_id(
+        portfolio = await portfolio_service.portfolio_repo.get_portfolio_by_id(
             portfolio_id, current_user.id
         )
 
