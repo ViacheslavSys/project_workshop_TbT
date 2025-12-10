@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from typing import Dict, Optional, Tuple
 
 import dotenv
 from openai import OpenAI
@@ -83,7 +84,7 @@ def _extract_json_from_text(text: str) -> tuple[str, str | None]:
     return cleaned_text, json_data
 
 
-def send_to_llm(user_id: str, user_message: str) -> str:
+def send_to_llm(user_id: str, user_message: str) -> Tuple[str, Optional[Dict]]:
     add_message(user_id, "user", user_message)
 
     messages = [m.model_dump() for m in get_conversation(user_id)]
@@ -102,9 +103,8 @@ def send_to_llm(user_id: str, user_message: str) -> str:
             )
 
             response = completion.choices[0].message.content
-
             if not response:
-                return ""
+                return "", None
 
             if response.startswith('\n'):
                 response = response.lstrip('\n')
@@ -112,19 +112,27 @@ def send_to_llm(user_id: str, user_message: str) -> str:
             response = response.lstrip()
 
             # Извлекаем JSON и оставляем только текстовую часть для ответа пользователю
-            cleaned_response, json_data = _extract_json_from_text(response)
+            cleaned_response, json_data_str = _extract_json_from_text(response)
 
-            # Если нашли JSON, сохраняем его отдельно (если нужно)
-            if json_data:
-                print(f"Найден JSON в ответе: {json_data}")  # Для отладки
-                # Здесь можно сохранить JSON в кэш или базу, если нужно
+            # Переменная для извлеченных JSON данных
+            extracted_data = None
+
+            # Если нашли JSON, пытаемся его распарсить
+            if json_data_str:
+                try:
+                    extracted_data = json.loads(json_data_str)
+                    print(f"Найден и распаршен JSON: {extracted_data}")
+                except json.JSONDecodeError as e:
+                    print(f"Ошибка парсинга JSON: {e}")
+                    extracted_data = None
 
             # На фронт отправляем только очищенный текст
             final_response = cleaned_response if cleaned_response else response
 
             add_message(user_id, "assistant", final_response)
 
-            return final_response
+            # Возвращаем И текст, И JSON данные
+            return final_response, extracted_data
 
         except Exception as e:
             # Универсальная обработка всех исключений
