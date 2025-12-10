@@ -8,6 +8,7 @@ import {
   sendChatAudio,
   sendChatText,
   submitRiskAnswers,
+  type ChatBackendResponse,
   type PortfolioRecommendation,
   type RiskClarifyingQuestion,
   type RiskQuestion,
@@ -165,6 +166,27 @@ const steps = [
 const GOAL_SUMMARY_PREFIX = "Отлично! Я понял вашу цель:";
 const GOAL_SUMMARY_SUFFIX = "Теперь перейдем к определению вашего риск-профиля.";
 
+type SmartGoalProgress = {
+  term: boolean;
+  sum: boolean;
+  reason: boolean;
+  capital: boolean;
+};
+
+const DEFAULT_SMART_PROGRESS: SmartGoalProgress = {
+  term: false,
+  sum: false,
+  reason: false,
+  capital: false,
+};
+
+const SMART_CHECKLIST_ITEMS: Array<{ key: keyof SmartGoalProgress; label: string }> = [
+  { key: "sum", label: "Сумма цели" },
+  { key: "term", label: "Срок достижения" },
+  { key: "capital", label: "Стартовый капитал" },
+  { key: "reason", label: "Зачем копите" },
+];
+
 function classNames(...cls: Array<string | false | null | undefined>) {
   return cls.filter(Boolean).join(" ");
 }
@@ -202,6 +224,9 @@ export default function ChatWide() {
   );
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>(() =>
     persistedRiskState?.clarificationAnswers ?? {}
+  );
+  const [smartProgress, setSmartProgress] = useState<SmartGoalProgress>(
+    () => ({ ...DEFAULT_SMART_PROGRESS }),
   );
 
   useEffect(() => {
@@ -305,6 +330,19 @@ export default function ChatWide() {
     [dispatch],
   );
 
+  const applySmartProgress = useCallback(
+    (payload: Partial<SmartGoalProgress> | null | undefined) => {
+      if (!payload) return;
+      setSmartProgress((prev) => ({
+        term: payload.term ?? prev.term,
+        sum: payload.sum ?? prev.sum,
+        reason: payload.reason ?? prev.reason,
+        capital: payload.capital ?? prev.capital,
+      }));
+    },
+    [setSmartProgress],
+  );
+
   useEffect(() => {
     if (initialMessageRef.current) return;
     if (messages.length > 0) {
@@ -346,6 +384,7 @@ export default function ChatWide() {
     setCurrentRiskIndex(-1);
     setClarifyingQuestions([]);
     setClarificationAnswers({});
+    setSmartProgress({ ...DEFAULT_SMART_PROGRESS });
     recorderChunksRef.current = [];
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
@@ -392,8 +431,9 @@ export default function ChatWide() {
     dispatch(setTyping(true));
 
     try {
-      const response = await sendChatText(userId, text);
-      appendMessage("ai", "message", response);
+      const response: ChatBackendResponse = await sendChatText(userId, text);
+      applySmartProgress(response);
+      appendMessage("ai", "message", response.response);
       dispatch(setStage("goals"));
     } catch (err) {
       const message =
@@ -505,8 +545,13 @@ export default function ChatWide() {
           dispatch(setTyping(true));
           setError(null);
 
-          const response = await sendChatAudio(userId, preparedBlob, preparedFilename);
-          appendMessage("ai", "message", response);
+          const response: ChatBackendResponse = await sendChatAudio(
+            userId,
+            preparedBlob,
+            preparedFilename,
+          );
+          applySmartProgress(response);
+          appendMessage("ai", "message", response.response);
           dispatch(setStage("goals"));
         } catch (err) {
           const message =
@@ -826,28 +871,32 @@ export default function ChatWide() {
         <div className="flex h-full min-h-0 flex-col gap-4 md:flex-row">
           <aside className="hidden w-56 rounded-2xl border border-border bg-white/5 p-3 md:block">
             <div className="mb-2 text-xs text-muted">Этапы</div>
-            <nav className="space-y-1">
+            <nav className="space-y-2">
               {steps.map((item, index) => {
                 const isActive = stage === item.id;
                 return (
-                  <button
-                    key={item.id}
-                    className={classNames(
-                      "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/5",
-                      isActive ? "bg-white/10 text-text" : "text-muted",
-                    )}
-                    disabled
-                  >
-                    <span
+                  <div key={item.id} className="space-y-1">
+                    <button
                       className={classNames(
-                        "text-xs font-semibold",
-                        isActive ? "text-primary" : "text-muted",
+                        "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/5",
+                        isActive ? "bg-white/10 text-text" : "text-muted",
                       )}
+                      disabled
                     >
-                      {index + 1}.
-                    </span>
-                    <span>{item.label}</span>
-                  </button>
+                      <span
+                        className={classNames(
+                          "text-xs font-semibold",
+                          isActive ? "text-primary" : "text-muted",
+                        )}
+                      >
+                        {index + 1}.
+                      </span>
+                      <span>{item.label}</span>
+                    </button>
+                    {item.id === "goals" ? (
+                      <SmartGoalChecklist progress={smartProgress} />
+                    ) : null}
+                  </div>
                 );
               })}
             </nav>
@@ -983,6 +1032,30 @@ export default function ChatWide() {
       onClose={() => setIsPortfolioLimitModalOpen(false)}
     />
     </>
+  );
+}
+
+function SmartGoalChecklist({ progress }: { progress: SmartGoalProgress }) {
+  return (
+    <ul className="ml-6 space-y-1 text-xs">
+      {SMART_CHECKLIST_ITEMS.map((item) => {
+        const done = progress[item.key];
+        return (
+          <li key={item.key} className="flex items-center gap-2">
+            <span
+              className={classNames(
+                "h-2.5 w-2.5 rounded-full",
+                done ? "bg-primary" : "bg-border",
+              )}
+              aria-hidden="true"
+            />
+            <span className={classNames("leading-tight", done ? "text-text" : "text-muted")}>
+              {item.label}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
