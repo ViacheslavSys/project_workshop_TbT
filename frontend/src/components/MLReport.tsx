@@ -3,18 +3,8 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import InfoTip from "./InfoTip";
 
-type Variable = { name: string; meaning: string };
-type Formula = {
-  id?: string;
-  title?: string;
-  latex?: string; // as plain text (LaTeX string)
-  text?: string; // plain text formula
-  variables?: Variable[];
-};
-
 type Props = {
   explanation: string;
-  formulas: Formula[];
   title?: string;
 };
 
