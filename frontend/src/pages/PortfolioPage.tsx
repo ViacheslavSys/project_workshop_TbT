@@ -81,11 +81,6 @@ const formatRelative = (value?: string | null) => {
   return `${months} мес. назад`;
 };
 
-const calcProgress = (current?: number | null, target?: number | null) => {
-  if (!target || target <= 0 || !current || current <= 0) return 0;
-  return Math.min(Math.max(current / target, 0), 1);
-};
-
 const getRiskVisual = (value?: string | null): RiskVisual => {
   if (!value) {
     return defaultRiskVisual;
@@ -312,8 +307,6 @@ function PortfolioSummaryCard({
     portfolio.risk_profile,
   );
   const updatedLabel = formatRelative(portfolio.updated_at || portfolio.created_at);
-  const progress = calcProgress(portfolio.initial_capital, portfolio.target_amount);
-  const progressPercent = `${Math.round(progress * 100)}%`;
   const stats = [
     {
       label: "\u0426\u0435\u043b\u0435\u0432\u0430\u044f \u0441\u0443\u043c\u043c\u0430",
