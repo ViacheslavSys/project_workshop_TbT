@@ -330,18 +330,15 @@ export default function ChatWide() {
     [dispatch],
   );
 
-  const applySmartProgress = useCallback(
-    (payload: Partial<SmartGoalProgress> | null | undefined) => {
-      if (!payload) return;
-      setSmartProgress((prev) => ({
-        term: payload.term ?? prev.term,
-        sum: payload.sum ?? prev.sum,
-        reason: payload.reason ?? prev.reason,
-        capital: payload.capital ?? prev.capital,
-      }));
-    },
-    [setSmartProgress],
-  );
+  const applySmartProgress = useCallback((payload: Partial<SmartGoalProgress> | null | undefined) => {
+    if (!payload) return;
+    setSmartProgress((prev) => ({
+      term: prev.term || Boolean(payload.term),
+      sum: prev.sum || Boolean(payload.sum),
+      reason: prev.reason || Boolean(payload.reason),
+      capital: prev.capital || Boolean(payload.capital),
+    }));
+  }, [setSmartProgress]);
 
   useEffect(() => {
     if (initialMessageRef.current) return;
@@ -893,7 +890,7 @@ export default function ChatWide() {
                       </span>
                       <span>{item.label}</span>
                     </button>
-                    {item.id === "goals" ? (
+                    {item.id === "goals" && stage === "goals" ? (
                       <SmartGoalChecklist progress={smartProgress} />
                     ) : null}
                   </div>
