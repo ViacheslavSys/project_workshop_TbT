@@ -20,15 +20,49 @@ def _get_api_keys():
     """Получает все API ключи из .env"""
     keys_by_index: dict[int, str] = {}
     pattern = re.compile(r"^OPENROUTER_API_KEY(?:_(\d+))?$")
+    loaded_sources: list[str] = []
+    empty_sources: list[str] = []
+    duplicate_indices: list[int] = []
+
     for name, value in os.environ.items():
         match = pattern.match(name)
         if not match:
             continue
         idx = int(match.group(1) or 1)
-        if value and idx not in keys_by_index:
+        if value:
+            if idx in keys_by_index:
+                duplicate_indices.append(idx)
+                # Keep the first occurrence for determinism
+                continue
             keys_by_index[idx] = value
+            loaded_sources.append(name)
+        else:
+            empty_sources.append(name)
 
-    return [keys_by_index[i] for i in sorted(keys_by_index)]
+    if loaded_sources:
+        print(f"[OpenRouter] Loaded API keys from: {', '.join(sorted(loaded_sources))}")
+    else:
+        print("[OpenRouter] No API keys loaded from environment")
+
+    if duplicate_indices:
+        unique_dups = sorted(set(duplicate_indices))
+        print(f"[OpenRouter] Duplicate indices ignored for: {', '.join(map(str, unique_dups))}")
+
+    if empty_sources:
+        print(f"[OpenRouter] Found empty API key variables: {', '.join(sorted(empty_sources))}")
+
+    effective_indices = sorted(keys_by_index)
+    effective_order = ", ".join(str(i) for i in effective_indices) or "none"
+    print(f"[OpenRouter] Effective API key order: {effective_order}")
+
+    if effective_indices:
+        max_idx = max(effective_indices)
+        missing = [str(i) for i in range(1, max_idx + 1) if i not in keys_by_index]
+        if missing:
+            print(f"[OpenRouter] Missing keys for indices: {', '.join(missing)} "
+                  f"(set OPENROUTER_API_KEY_{missing[0]} etc.)")
+
+    return [keys_by_index[i] for i in effective_indices]
 
 
 API_KEYS = _get_api_keys()
