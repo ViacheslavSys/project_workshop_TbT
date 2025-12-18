@@ -30,6 +30,8 @@ services:
     depends_on:
       - db
       - redis
+    env_file:
+      - .env
     environment:
       # База данных
       POSTGRES_USER: ${POSTGRES_USER}
@@ -100,6 +102,8 @@ services:
     depends_on:
       - redis
       - db
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -123,6 +127,8 @@ services:
       - redis
       - db
       - celery_worker
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
