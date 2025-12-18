@@ -68,6 +68,7 @@ REDIS_URL=redis://redis:6379/0
 REDIS_TTL=360
 
 OPENROUTER_API_KEY=openrouter_api_key
+OPENROUTER_API_KEY_2=openrouter_api_key_2  # опционально, дополнительные ключи продолжаются _3, _4, ...
 MODEL=model
 
 MODEL_ANALYSIS=vodel_analysis

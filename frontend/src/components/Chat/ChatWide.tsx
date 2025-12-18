@@ -210,6 +210,7 @@ export default function ChatWide() {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [isAudioSupported, setIsAudioSupported] = useState(false);
   const [, setPending] = useState(false);
   const [riskQuestions, setRiskQuestions] = useState<RiskQuestion[]>(() =>
     persistedRiskState?.riskQuestions ?? []
@@ -304,6 +305,14 @@ export default function ChatWide() {
   useEffect(() => {
     void refreshPortfolioCount();
   }, [refreshPortfolioCount]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof navigator === "undefined") return;
+    const available = Boolean(
+      navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function",
+    );
+    setIsAudioSupported(available);
+  }, []);
 
   const resolveUserId = useCallback(() => {
     const resolved = userIdRef.current || getCanonicalUserId(authUserId);
@@ -502,6 +511,13 @@ export default function ChatWide() {
 
   const startRecording = async () => {
     if (isRecording) return;
+    if (!isAudioSupported) {
+      const message =
+        "Voice input is unavailable because navigator.mediaDevices.getUserMedia is missing. Open the page over HTTPS and allow microphone access.";
+      appendMessage("ai", "message", message);
+      setError(message);
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
@@ -994,9 +1010,16 @@ export default function ChatWide() {
                     "group relative flex w-full items-center justify-center gap-3 rounded-full border border-primary/60 bg-primary/10 px-4 py-2 text-left text-sm font-semibold text-primary shadow-sm transition sm:w-auto sm:justify-start",
                     "hover:bg-primary/15 hover:shadow-[0_8px_24px_rgba(34,211,238,0.15)] focus:outline-none focus:ring-2 focus:ring-primary/60",
                     isRecording ? "border-primary bg-primary/20 text-white shadow-[0_0_0_4px_rgba(34,211,238,0.15)]" : undefined,
+                    !isAudioSupported ? "cursor-not-allowed opacity-60" : undefined,
                   )}
                   onClick={() => (isRecording ? stopRecording() : startRecording())}
                   aria-pressed={isRecording}
+                  disabled={!isAudioSupported}
+                  title={
+                    isAudioSupported
+                      ? undefined
+                      : "Voice input works only in browsers with navigator.mediaDevices.getUserMedia (HTTPS required)."
+                  }
                   aria-label={isRecording ? "Остановить запись" : "Записать голосовое сообщение"}
                 >
                   <span className="relative flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white transition group-hover:scale-[1.04] group-active:scale-95">

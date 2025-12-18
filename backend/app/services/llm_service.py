@@ -2,6 +2,7 @@ import json
 import os
 import time
 import asyncio
+import re
 from typing import Dict, Optional, Tuple
 
 import dotenv
@@ -17,20 +18,17 @@ dotenv.load_dotenv()
 # Получаем все API ключи из .env
 def _get_api_keys():
     """Получает все API ключи из .env"""
-    keys = []
-    i = 1
-    while True:
-        # First key can be stored as OPENROUTER_API_KEY (or _1 for legacy naming)
-        key_name = "OPENROUTER_API_KEY" if i == 1 else f"OPENROUTER_API_KEY_{i}"
-        key_value = os.environ.get(key_name) or (
-            os.environ.get("OPENROUTER_API_KEY_1") if i == 1 else None
-        )
-        if key_value:
-            keys.append(key_value)
-            i += 1
-        else:
-            break
-    return keys
+    keys_by_index: dict[int, str] = {}
+    pattern = re.compile(r"^OPENROUTER_API_KEY(?:_(\d+))?$")
+    for name, value in os.environ.items():
+        match = pattern.match(name)
+        if not match:
+            continue
+        idx = int(match.group(1) or 1)
+        if value and idx not in keys_by_index:
+            keys_by_index[idx] = value
+
+    return [keys_by_index[i] for i in sorted(keys_by_index)]
 
 
 API_KEYS = _get_api_keys()

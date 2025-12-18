@@ -84,8 +84,13 @@ services:
       - backend
     ports:
       - "80:80"
+      - "443:443"
+    environment:
+      - SSL_CERT_PATH=/etc/ssl/private/fullchain.pem
+      - SSL_KEY_PATH=/etc/ssl/private/privkey.pem
     volumes:
       - ./nginx/logs:/var/log/nginx
+      - ./nginx/certs:/etc/ssl/private
 
   # Celery Worker
   celery_worker:

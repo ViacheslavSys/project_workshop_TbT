@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from datetime import datetime
 
 import aiohttp
@@ -22,18 +23,18 @@ class PortfolioAnalysisService:
         self.timeout = aiohttp.ClientTimeout(total=60)
 
     def _get_api_keys(self):
-        """Получает все API ключи из .env"""
-        keys = []
-        i = 1
-        while True:
-            key_name = f"OPENROUTER_API_KEY_{i}" if i > 1 else "OPENROUTER_API_KEY"
-            key_value = os.environ.get(key_name)
-            if key_value:
-                keys.append(key_value)
-                i += 1
-            else:
-                break
-        return keys
+        """???????? API ????? OpenRouter ?? ?????????"""
+        keys_by_index: dict[int, str] = {}
+        pattern = re.compile(r"^OPENROUTER_API_KEY(?:_(\d+))?$")
+        for name, value in os.environ.items():
+            match = pattern.match(name)
+            if not match:
+                continue
+            idx = int(match.group(1) or 1)
+            if value and idx not in keys_by_index:
+                keys_by_index[idx] = value
+
+        return [keys_by_index[i] for i in sorted(keys_by_index)]
 
     def _get_client(self):
         """Создает клиент с текущим API ключом"""
