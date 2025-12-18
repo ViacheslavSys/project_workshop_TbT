@@ -1,6 +1,6 @@
 import re
 from datetime import date, datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, constr, validator
 
@@ -79,3 +79,9 @@ class AuthResponse(BaseModel):
 class TokenData(BaseModel):
     username: Optional[str] = None
     user_id: Optional[int] = None
+
+
+class UserIdentityResponse(BaseModel):
+    user_id: str
+    kind: Literal["anonymous", "registered"]
+    registered_user_id: Optional[int] = None
