@@ -1,0 +1,16 @@
+.git
+.github
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+tmpfile
+dist
+**/node_modules
+**/.venv
+.env
+.env.*
+frontend/dist
+nginx/logs

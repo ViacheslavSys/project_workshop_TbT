@@ -37,7 +37,8 @@ export type AuthResponse = {
 };
 
 export async function registerUser(payload: RegisterUserPayload) {
-  const res = await fetch(buildUrl("/users"), {
+  // Use trailing slash to avoid backend redirect from /users -> /users/
+  const res = await fetch(buildUrl("/users/"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

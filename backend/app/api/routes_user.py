@@ -1,19 +1,97 @@
+import secrets
+import time
 from datetime import timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.security import HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.core.security import create_access_token
+from app.core.security import create_access_token, verify_token
 from app.models.user import User
-from app.schemas.user import AuthResponse, UserCreate, UserLogin, UserOut, UserUpdate
+from app.repositories import user_repository
+from app.schemas.user import (
+    AuthResponse,
+    UserCreate,
+    UserIdentityResponse,
+    UserLogin,
+    UserOut,
+    UserUpdate,
+)
 from app.services import user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
+
+
+def _generate_anonymous_user_id(current_id: Optional[str]) -> str:
+    """
+    Generate a stable numeric anonymous user id that matches the frontend validation rules.
+    Reuse the provided id when it is a digits-only string, otherwise derive a new value.
+    """
+    candidate = (current_id or "").strip()
+    if candidate.isdigit():
+        return candidate
+
+    timestamp_ms = int(time.time() * 1000)
+    suffix = f"{secrets.randbelow(1_000_000):06d}"
+    return f"{timestamp_ms}{suffix}"
+
+
+async def _try_get_user_from_token(
+    credentials: Optional[HTTPAuthorizationCredentials], db: AsyncSession
+) -> Optional[User]:
+    if not credentials or credentials.scheme.lower() != "bearer":
+        return None
+
+    payload = verify_token(credentials.credentials)
+    if not payload:
+        return None
+
+    username: Optional[str] = payload.get("sub")
+    user_id: Optional[int] = payload.get("user_id")
+
+    if not username or user_id is None:
+        return None
+
+    user = await user_repository.get_user_by_id(db, user_id)
+    if not user or not user.is_active or user.username != username:
+        return None
+
+    return user
+
+
+@router.get("/identity", response_model=UserIdentityResponse)
+async def get_identity(
+    current_id: Optional[str] = Query(
+        None,
+        description="Existing anonymous user id to preserve across sessions",
+        alias="current_id",
+    ),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Resolve the caller identity.
+    - If a valid Bearer token is provided, return the registered user id.
+    - Otherwise issue or echo back a numeric anonymous id that stays on the client.
+    """
+    registered_user = await _try_get_user_from_token(credentials, db)
+    if registered_user:
+        return UserIdentityResponse(
+            user_id=str(registered_user.id),
+            kind="registered",
+            registered_user_id=registered_user.id,
+        )
+
+    anonymous_id = _generate_anonymous_user_id(current_id)
+    return UserIdentityResponse(
+        user_id=anonymous_id, kind="anonymous", registered_user_id=None
+    )
 
 
 # Публичные эндпоинты (не требуют аутентификации)

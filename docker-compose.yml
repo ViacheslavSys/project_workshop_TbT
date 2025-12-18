@@ -37,6 +37,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       
       # Redis
       REDIS_URL: redis://redis:6379/0
@@ -58,6 +61,7 @@ services:
   frontend:
     build: ./frontend
     container_name: my_frontend
+    profiles: ["dev"]
     depends_on:
       - backend
     environment:
@@ -67,6 +71,21 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+      args:
+        VITE_API_URL: /api
+        VITE_API_PATH: /api
+    container_name: invest_nginx
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/logs:/var/log/nginx
 
   # Celery Worker
   celery_worker:
@@ -83,6 +102,8 @@ services:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       MODEL: ${MODEL}
       MODEL_ANALYSIS: ${MODEL_ANALYSIS}
@@ -104,6 +125,8 @@ services:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       MODEL: ${MODEL}
       MODEL_ANALYSIS: ${MODEL_ANALYSIS}

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useDispatch } from "react-redux";
 import { pushMessage, setTyping, setStage } from "../store/chatSlice";
+import { safeRandomUUID } from "../utils/uuid";
 
 export const useWebSocket = (url: string) => {
   const ws = useRef<WebSocket | null>(null);
@@ -15,7 +16,7 @@ export const useWebSocket = (url: string) => {
       try {
         const m = JSON.parse(e.data);
         const msg = {
-          id: m.id || crypto.randomUUID(),
+          id: m.id || safeRandomUUID(),
           type: m.type,
           content: m.content,
           sender: (m.sender === "user" || m.sender === "ai") ? m.sender : "ai",
@@ -39,7 +40,7 @@ export const useWebSocket = (url: string) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type, content, timestamp: Date.now() }));
       if (opts?.echo !== false) {
-        dispatch(pushMessage({ id: crypto.randomUUID(), type, content, sender: "user", ts: Date.now() }));
+        dispatch(pushMessage({ id: safeRandomUUID(), type, content, sender: "user", ts: Date.now() }));
       }
       dispatch(setTyping(true));
     }
