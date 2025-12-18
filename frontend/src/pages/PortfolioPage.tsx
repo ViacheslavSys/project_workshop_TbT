@@ -54,7 +54,7 @@ const formatMoney = (value?: number | null) => {
 
 const formatDate = (value?: string | null) => {
   if (!value) {
-    return "—";
+    return "-";
   }
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) {
@@ -65,6 +65,20 @@ const formatDate = (value?: string | null) => {
     month: "short",
     year: "numeric",
   });
+};
+
+const formatRelative = (value?: string | null) => {
+  if (!value) return "-";
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return "-";
+  const diff = Date.now() - timestamp;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.floor(diff / dayMs);
+  if (days <= 0) return "Сегодня";
+  if (days === 1) return "Вчера";
+  if (days < 30) return `${days} дн. назад`;
+  const months = Math.floor(days / 30);
+  return `${months} мес. назад`;
 };
 
 const getRiskVisual = (value?: string | null): RiskVisual => {
@@ -292,6 +306,7 @@ function PortfolioSummaryCard({
   const { label: riskLabel, badgeClass, dotClass, accentClass } = getRiskVisual(
     portfolio.risk_profile,
   );
+  const updatedLabel = formatRelative(portfolio.updated_at || portfolio.created_at);
   const stats = [
     {
       label: "\u0426\u0435\u043b\u0435\u0432\u0430\u044f \u0441\u0443\u043c\u043c\u0430",
@@ -304,6 +319,7 @@ function PortfolioSummaryCard({
     {
       label: "\u0421\u043e\u0437\u0434\u0430\u043d",
       value: formatDate(portfolio.created_at),
+      singleLine: true,
     },
   ];
 
@@ -319,9 +335,17 @@ function PortfolioSummaryCard({
       />
       <div className="card-body flex flex-1 flex-col gap-5">
         <div className="space-y-5">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
-              <div className="text-lg font-semibold leading-snug">{portfolio.portfolio_name}</div>
+              <div className="text-lg font-semibold leading-snug line-clamp-1">
+                {portfolio.portfolio_name}
+              </div>
+              <div
+                className="text-xs text-muted whitespace-nowrap overflow-hidden text-ellipsis"
+                title={`Обновлён: ${updatedLabel}`}
+              >
+                Обновлён: {updatedLabel}
+              </div>
             </div>
             <span
               className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${badgeClass}`}
@@ -332,11 +356,18 @@ function PortfolioSummaryCard({
           </div>
           <dl className="grid gap-4 rounded-2xl border border-border bg-surface p-4 text-sm sm:grid-cols-3">
             {stats.map((stat) => (
-              <div key={stat.label} className="space-y-1">
+              <div key={stat.label} className="space-y-1 min-w-0">
                 <dt className="text-xs font-medium uppercase tracking-wide text-muted">
                   {stat.label}
                 </dt>
-                <dd className="text-base font-semibold text-text tabular-nums">{stat.value}</dd>
+                <dd
+                  className={`text-base font-semibold text-text tabular-nums ${
+                    stat.singleLine ? "whitespace-nowrap" : ""
+                  }`}
+                  title={typeof stat.value === "string" ? stat.value : undefined}
+                >
+                  {stat.value}
+                </dd>
               </div>
             ))}
           </dl>

@@ -16,33 +16,67 @@ type LocationState = {
   summary?: PortfolioSummary | null;
 };
 
-const reportFormulas = [
-  {
-    title: "Ожидаемая доходность портфеля",
-    latex: "E[R_p] = \\sum_i w_i \\cdot E[R_i]",
-    variables: [
-      { name: "w_i", meaning: "доля i‑го актива в портфеле" },
-      { name: "E[R_i]", meaning: "ожидаемая доходность i‑го актива" },
-    ],
-  },
-  {
-    title: "Риск портфеля (стандартное отклонение)",
-    latex:
-      "\\sigma_p = \\sqrt{\\sum_i w_i^2 \\sigma_i^2 + 2 \\sum_{i<j} w_i w_j \\sigma_i \\sigma_j \\rho_{ij}}",
-    variables: [
-      { name: "\\sigma_i", meaning: "волатильность i‑го актива" },
-      { name: "\\rho_{ij}", meaning: "корреляция пар активов i и j" },
-    ],
-  },
-  {
-    title: "Коэффициент Шарпа",
-    latex: "Sharpe = \\frac{E[R_p] - R_f}{\\sigma_p}",
-    variables: [{ name: "R_f", meaning: "безрисковая ставка" }],
-  },
+type AllocationStackItem = {
+  key: string;
+  label: string;
+  amount: number;
+  weight: number;
+  weightShare: number;
+  amountShare: number;
+  color: string;
+};
+
+const allocationDistributionColors = [
+  "#60A5FA",
+  "#34D399",
+  "#F97316",
+  "#A855F7",
+  "#F87171",
+  "#2DD4BF",
+  "#FACC15",
+  "#FB7185",
 ];
 
 const ensureFiniteNumber = (value?: number | null) =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+const mapPifLabel = (value?: string | null) => {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "золото") return "ПИФ золото";
+  if (normalized === "недвижимость") return "ПИФ недвижимость";
+  return null;
+};
+
+const withPifLabel = (value?: string | null) => mapPifLabel(value) ?? value ?? "";
+
+const PIF_HINT_TEXT = "ПИФ — паевой инвестиционный фонд";
+const hasPifLabel = (value?: string | null) => Boolean(value && /пиф/i.test(value));
+const renderPifLabel = (value?: string | null) => {
+  const label = value ?? "";
+  if (!hasPifLabel(label)) return label || "—";
+  const match = label.match(/пиф/i);
+  if (!match) return label;
+
+  const matchIndex = match.index ?? 0;
+  const before = label.slice(0, matchIndex);
+  const highlighted = label.slice(matchIndex, matchIndex + match[0].length);
+  const after = label.slice(matchIndex + match[0].length);
+
+  return (
+    <span className="inline-flex items-baseline gap-1 leading-tight">
+      {before ? <span>{before}</span> : null}
+      <span className="relative group cursor-help">
+        <span className="rounded border border-primary/30 bg-primary/10 px-1 text-[11px] font-semibold uppercase text-primary leading-none">
+          {highlighted}
+        </span>
+        <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black/80 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+          {PIF_HINT_TEXT}
+        </span>
+      </span>
+      {after ? <span>{after}</span> : null}
+    </span>
+  );
+};
 
 const formatMoney = (value?: number | null, digits = 0) =>
   `${ensureFiniteNumber(value).toLocaleString("ru-RU", {
@@ -68,6 +102,62 @@ const formatDateTime = (value?: string | null) => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+const escapeICSText = (value: string) =>
+  value
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+
+const toICSDateTimeUTC = (date: Date) =>
+  date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+const getCalendarStartDate = () => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1, 8, 0, 0));
+};
+
+const buildMonthlyContributionICS = (
+  detail: MonthlyPaymentDetail,
+  goalTitle?: string,
+) => {
+  const start = getCalendarStartDate();
+  const end = new Date(start.getTime() + 30 * 60 * 1000);
+
+  const title = `Ежемесячный взнос — ${goalTitle || "портфель"}`;
+  const description = [
+    `Сумма: ${ensureFiniteNumber(detail.monthly_payment).toLocaleString("ru-RU")} ₽`,
+    `Длительность: ${ensureFiniteNumber(detail.total_months)} мес.`,
+    "Создано в TBT портфолио",
+  ].join(" · ");
+
+  const uid =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `tbt-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//TBT//Portfolio//RU",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${toICSDateTimeUTC(new Date())}`,
+    `DTSTART:${toICSDateTimeUTC(start)}`,
+    `DTEND:${toICSDateTimeUTC(end)}`,
+    `SUMMARY:${escapeICSText(title)}`,
+    `DESCRIPTION:${escapeICSText(description)}`,
+    `RRULE:FREQ=MONTHLY;COUNT=${Math.max(
+      1,
+      Math.round(ensureFiniteNumber(detail.total_months)),
+    )}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
 };
 
 export default function PortfolioDetailPage() {
@@ -187,7 +277,7 @@ export default function PortfolioDetailPage() {
       return [];
     }
     return portfolio.composition.map((block) => ({
-      assetType: block.asset_type,
+      assetType: withPifLabel(block.asset_type),
       weight: block.target_weight ?? 0,
       amount: block.amount ?? 0,
     }));
@@ -201,13 +291,14 @@ export default function PortfolioDetailPage() {
 
     return portfolio.composition.map((block) => {
       const assets = Array.isArray(block.assets) ? block.assets : [];
+      const normalizedAssetType = withPifLabel(block.asset_type);
       return {
-        assetType: block.asset_type,
+        assetType: normalizedAssetType,
         targetWeight: block.target_weight,
         amount: block.amount,
         rows: assets.map((asset) => ({
           ticker: asset.ticker || block.asset_type,
-          name: asset.name || block.asset_type,
+          name: withPifLabel(asset.name || normalizedAssetType || block.asset_type),
           allocation:
             asset.weight ??
             block.target_weight ??
@@ -230,6 +321,10 @@ export default function PortfolioDetailPage() {
     return Array.isArray(steps) ? steps : [];
   }, [portfolio]);
 
+  const [allocationMode, setAllocationMode] = useState<"weight" | "amount">(
+    "weight",
+  );
+
   const planGeneratedAt = useMemo(() => {
     if (!portfolio?.step_by_step_plan?.generated_at) {
       return "";
@@ -241,6 +336,66 @@ export default function PortfolioDetailPage() {
     const formatted = formatDateTime(portfolio?.updated_at);
     return formatted || "нет данных";
   }, [portfolio?.updated_at]);
+
+  const allocationStackItems = useMemo<AllocationStackItem[]>(() => {
+    const blocksSource = assetBlocks.length
+      ? assetBlocks
+      : allocationSummary.map((item) => ({
+          assetType: item.assetType || "",
+          targetWeight: item.weight,
+          amount: item.amount,
+          rows: [],
+        }));
+
+    if (!blocksSource.length) {
+      return [];
+    }
+
+    const items = blocksSource.map((block, index) => {
+      const rows = Array.isArray(block.rows) ? block.rows : [];
+      const rowsAmount = rows.reduce(
+        (sum, row) => sum + ensureFiniteNumber(row.amount),
+        0,
+      );
+      const amount =
+        rowsAmount > 0
+          ? rowsAmount
+          : ensureFiniteNumber(block.amount ?? (block as { amount?: number }).amount);
+      const weight = ensureFiniteNumber(
+        block.targetWeight ??
+          (block as { weight?: number; target_weight?: number }).weight ??
+          (block as { target_weight?: number }).target_weight,
+      );
+
+      return {
+        key: `${block.assetType || "block"}-${index}`,
+        label: block.assetType || `Класс ${index + 1}`,
+        amount,
+        weight,
+        color: allocationDistributionColors[index % allocationDistributionColors.length],
+      };
+    });
+
+    const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
+    const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+    const defaultShare = items.length ? 1 / items.length : 0;
+
+    return items.map((item) => {
+      const weightShare =
+        totalWeight > 0 ? item.weight / totalWeight : defaultShare;
+      const amountShare =
+        totalAmount > 0 ? item.amount / totalAmount : weightShare;
+
+      return {
+        ...item,
+        weightShare: Number.isFinite(weightShare) ? Math.max(weightShare, 0) : 0,
+        amountShare: Number.isFinite(amountShare) ? Math.max(amountShare, 0) : 0,
+      };
+    });
+  }, [assetBlocks, allocationSummary]);
+
+  const hasAmountData = allocationStackItems.some((item) => item.amount > 0);
+  const activeAllocationMode = hasAmountData ? allocationMode : "weight";
 
   if (loading) {
     return (
@@ -366,37 +521,116 @@ export default function PortfolioDetailPage() {
         />
       </section>
 
-      <section className="grid gap-3 lg:grid-cols-2">
-        <PortfolioInfoPanel updatedAtLabel={updatedAtLabel} className="h-full" />
-        <section className="card h-full">
-          <div className="card-header flex items-center justify-between">
-            <div>
-              <div className="text-lg font-semibold">Разбивка по классам активов</div>
-              <p className="text-sm text-muted">
-                Рекомендованные доли классов активов в итоговом портфеле
-              </p>
-            </div>
+      <PortfolioInfoPanel updatedAtLabel={updatedAtLabel} />
+
+      <section className="card h-full">
+        <div className="card-header flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">Разбивка по классам активов</div>
+            <p className="text-sm text-muted">
+              Рекомендованные доли и примерная стоимость классов активов в портфеле
+            </p>
           </div>
-          <div className="card-body flex flex-wrap gap-3">
-            {allocationSummary.length ? (
-              allocationSummary.map((item, index) => (
-                <div
-                  key={`${item.assetType}-${index}`}
-                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
-                >
-                  <div className="text-muted">{item.assetType}</div>
-                  <div className="text-lg font-semibold">
-                    {formatPercent(item.weight)}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-muted">
-                Нет данных о распределении активов.
-              </p>
-            )}
+          <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 p-1 text-xs">
+            <button
+              type="button"
+              className={`rounded-full px-3 py-1 font-semibold transition ${activeAllocationMode === "weight" ? "bg-white/10 text-text" : "text-muted hover:text-text"}`}
+              onClick={() => setAllocationMode("weight")}
+              aria-pressed={activeAllocationMode === "weight"}
+            >
+              Доля
+            </button>
+            <button
+              type="button"
+              className={`rounded-full px-3 py-1 font-semibold transition ${
+                activeAllocationMode === "amount"
+                  ? "bg-white/10 text-text"
+                  : "text-muted hover:text-text"
+              } ${hasAmountData ? "" : "opacity-60 cursor-not-allowed"}`}
+              onClick={() => hasAmountData && setAllocationMode("amount")}
+              aria-pressed={activeAllocationMode === "amount"}
+              disabled={!hasAmountData}
+            >
+              Сумма
+            </button>
           </div>
-        </section>
+        </div>
+        <div className="card-body space-y-4">
+          {allocationStackItems.length ? (
+            <>
+              <div className="flex h-12 w-full items-stretch overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                {allocationStackItems.map((item) => {
+                  const share =
+                    activeAllocationMode === "amount"
+                      ? item.amountShare
+                      : item.weightShare;
+                  return (
+                    <div
+                      key={`${item.key}-segment`}
+                      className="h-full transition-all"
+                      style={{
+                        flexGrow: share > 0 ? share : 0,
+                        minWidth: share > 0 ? 14 : 0,
+                        backgroundColor: item.color,
+                      }}
+                      title={`${item.label}: ${
+                        activeAllocationMode === "amount"
+                          ? formatMoney(item.amount)
+                          : formatPercent(share)
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {allocationStackItems.map((item, index) => {
+                  const share =
+                    activeAllocationMode === "amount"
+                      ? item.amountShare
+                      : item.weightShare;
+                  const secondaryShare =
+                    activeAllocationMode === "amount"
+                      ? formatPercent(item.weightShare)
+                      : formatMoney(item.amount);
+
+                  return (
+                    <div
+                      key={`${item.key}-legend-${index}`}
+                      className="flex min-w-[180px] max-w-[260px] flex-1 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1 leading-tight">
+                        <div className="truncate text-sm font-semibold">
+                          {renderPifLabel(item.label)}
+                        </div>
+                        <div className="text-[11px] text-muted">
+                          {activeAllocationMode === "amount"
+                            ? `Доля: ${secondaryShare}`
+                            : `Сумма: ${secondaryShare}`}
+                        </div>
+                      </div>
+                      <div className="text-right text-sm font-semibold text-text">
+                        {activeAllocationMode === "amount"
+                          ? formatMoney(item.amount)
+                          : formatPercent(share)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted">
+              Нет данных о распределении активов.
+            </p>
+          )}
+        </div>
       </section>
 
       <RestrictedPortfolioDetails restricted={!canViewFullDetails}>
@@ -405,6 +639,7 @@ export default function PortfolioDetailPage() {
             <MonthlyPlanCard
               detail={monthlyPlanDetail}
               restricted={sensitiveInfoRestricted}
+              goal={portfolio.smart_goal}
             />
           ) : null}
 
@@ -539,7 +774,6 @@ export default function PortfolioDetailPage() {
                 ? "AI готовит пояснения по расчётам..."
                 : analysis
             }
-            formulas={reportFormulas}
           />
         )}
       </section>
@@ -559,42 +793,41 @@ function PortfolioInfoPanel({
 
   return (
     <section
-      className={`card border-primary/30 bg-primary/5 ${className}`.trim()}
+      className={`flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs sm:text-sm ${className}`.trim()}
+      aria-label="Источники данных"
     >
-      <div className="card-header text-lg font-semibold">Истточники данных</div>
-      <div className="card-body grid gap-3 sm:grid-cols-3">
-        <InfoTile
-          label="Откуда цены"
-          value={
-            <a
-              href="https://www.moex.com"
-              target="_blank"
-              rel="noreferrer noopener"
-              className="text-primary hover:opacity-80"
-            >
-              MOEX
-            </a>
-          }
-        />
-        <InfoTile
-          label="Откуда инфляция"
-          value={
-            <a
-              href="https://www.cbr.ru"
-              target="_blank"
-              rel="noreferrer noopener"
-              className="text-primary hover:opacity-80"
-            >
-              ЦБ РФ
-            </a>
-          }
-        />
-        <InfoTile
-          label="Дата обновления портфеля"
-          value={updatedAtLabel}
-          muted={isUpdatedAtMissing}
-        />
-      </div>
+      <span className="text-muted">Источники:</span>
+      <InfoTile
+        label="Цены"
+        value={
+          <a
+            href="https://www.moex.com"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-primary hover:opacity-80"
+          >
+            MOEX
+          </a>
+        }
+      />
+      <InfoTile
+        label="Инфляция"
+        value={
+          <a
+            href="https://www.cbr.ru"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-primary hover:opacity-80"
+          >
+            ЦБ РФ
+          </a>
+        }
+      />
+      <InfoTile
+        label="Обновлено"
+        value={updatedAtLabel}
+        muted={isUpdatedAtMissing}
+      />
     </section>
   );
 }
@@ -609,15 +842,15 @@ function InfoTile({
   muted?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-      <p className="text-xs uppercase text-muted">{label}</p>
-      <p
-        className={`text-sm font-semibold ${
-          muted ? "text-muted" : "text-text"
-        }`}
-      >
+    <div
+      className={`inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/10 px-3 py-1 ${
+        muted ? "text-muted" : "text-text"
+      }`}
+    >
+      <span className="text-muted">{label}:</span>
+      <span className={`font-semibold ${muted ? "text-muted" : "text-text"}`}>
         {value}
-      </p>
+      </span>
     </div>
   );
 }
@@ -665,63 +898,99 @@ function SummaryCard({
 }
 
 function MonthlyPlanCard({
-  detail
+  detail,
+  restricted,
+  goal,
 }: {
   detail: MonthlyPaymentDetail;
   restricted: boolean;
+  goal?: string;
 }) {
   const monthlyPayment = ensureFiniteNumber(detail.monthly_payment);
   const totalMonths = Math.max(0, Math.round(ensureFiniteNumber(detail.total_months)));
   const totalYears = totalMonths ? totalMonths / 12 : 0;
   const totalContribution = monthlyPayment * totalMonths;
-  const annuityFactor = ensureFiniteNumber(detail.annuity_factor);
+  const futureCapital = ensureFiniteNumber(detail.future_capital);
   const totalMonthsLabel = totalMonths
     ? `${totalMonths.toLocaleString("ru-RU")} мес.${totalYears ? ` (${totalYears.toFixed(1)} лет)` : ""}`
-    : "—";
+    : "-";
 
-  const stats: Array<{ label: string; value: string; hint?: string }> = [
+  const handleAddToCalendar = useCallback(() => {
+    const icsContent = buildMonthlyContributionICS(detail, goal);
+    const blob = new Blob([icsContent], { type: "text/calendar" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "monthly-contribution.ics";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [detail, goal]);
+
+  const stats: Array<{ label: string; value: string }> = [
     {
       label: "Срок накопления",
       value: totalMonthsLabel,
-      hint: "Период, на который рассчитан ежемесячный план",
     },
     {
-      label: "Накопите к концу периода",
-      value: formatMoney(detail.future_capital),
-      hint: "Прогнозируемый капитал при соблюдении графика",
+      label: "Итог по модели",
+      value: formatMoney(futureCapital),
     },
     {
-      label: "Сумма взносов за период",
+      label: "Всего внесёте",
       value: formatMoney(totalContribution),
-      hint: "Регулярные взносы без стартового капитала и доходности",
     },
     {
-      label: "Месячная доходность модели",
+      label: "Доходность в расчёте",
       value: formatPercent(detail.monthly_rate, 2),
-      hint: "Используется при расчёте ежемесячного платежа",
-    },
-    {
-      label: "Ануитетный коэффициент",
-      value: annuityFactor ? annuityFactor.toFixed(2) : "—",
-      hint: "Во сколько раз взнос меньше цели",
     },
   ];
 
   return (
-    <section className="card space-y-1">
-      <div className="card-header flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between !pt-4 !pb-2">
-        <div className="text-lg font-semibold">Месячный план взносов</div>
+    <section className="card">
+      <div className="card-header flex flex-col gap-1 md:flex-row md:items-center md:justify-between !py-3">
+        <div className="flex flex-col gap-1">
+          <div className="text-lg font-semibold">Месячный план взносов</div>
+          <p className="text-xs text-muted">
+            {totalMonthsLabel !== "-" ? `${formatMoney(monthlyPayment)} ежемесячно · ${totalMonthsLabel}` : "Фиксированный ежемесячный платёж"}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div className="group relative inline-flex">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleAddToCalendar}
+              aria-describedby="add-to-calendar-tip"
+            >
+              В календарь
+            </button>
+            <span
+              id="add-to-calendar-tip"
+              role="tooltip"
+              className="pointer-events-none absolute left-1/2 top-full z-10 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black/75 px-2 py-1 text-[11px] leading-tight text-white shadow-lg group-hover:block"
+            >
+              Скачает ICS с повтором по месяцам
+            </span>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-base font-semibold text-text">
+            <span className="text-xs uppercase text-muted">Платёж</span>
+            <SensitiveValue restricted={restricted}>
+              {formatMoney(monthlyPayment)}
+            </SensitiveValue>
+          </div>
+        </div>
       </div>
-      <div className="card-body !pt-4 !pb-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="card-body space-y-3 !pt-3 !pb-3">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2"
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
             >
               <p className="text-xs uppercase text-muted">{stat.label}</p>
-              <p className="text-base font-semibold text-text">{stat.value}</p>
-              {stat.hint ? <p className="text-xs text-muted">{stat.hint}</p> : null}
+              <p className="text-sm font-semibold text-text">{stat.value}</p>
             </div>
           ))}
         </div>

@@ -15,6 +15,10 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    term: bool
+    sum: bool
+    reason: bool
+    capital: bool
 
 
 class Conversation(BaseModel):

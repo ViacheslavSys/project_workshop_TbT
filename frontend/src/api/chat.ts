@@ -1,6 +1,12 @@
 import { buildUrl, handleResponse } from "./http";
 
-type ChatBackendResponse = { response: string };
+export type ChatBackendResponse = {
+  response: string;
+  term: boolean;
+  sum: boolean;
+  reason: boolean;
+  capital: boolean;
+};
 
 export async function sendChatText(userId: string, message: string) {
   const form = new FormData();
@@ -13,7 +19,7 @@ export async function sendChatText(userId: string, message: string) {
   });
 
   const data = await handleResponse<ChatBackendResponse>(res);
-  return data.response;
+  return data;
 }
 
 const AUDIO_MIME_EXTENSIONS: Record<string, string> = {
@@ -50,7 +56,7 @@ export async function sendChatAudio(
   });
 
   const data = await handleResponse<ChatBackendResponse>(res);
-  return data.response;
+  return data;
 }
 
 export type RiskQuestion = {
