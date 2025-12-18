@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import asyncio
 from typing import Dict, Optional, Tuple
 
 import dotenv
@@ -170,6 +171,15 @@ def send_to_llm(user_id: str, user_message: str) -> Tuple[str, Optional[Dict]]:
                 raise e
 
     raise Exception(f"Failed after {max_retries} attempts")
+
+
+async def send_to_llm_async(user_id: str, user_message: str) -> Tuple[str, Optional[Dict]]:
+    """
+    Async-friendly wrapper that runs the blocking OpenAI client in a thread
+    to avoid blocking the event loop while waiting for LLM responses.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, send_to_llm, user_id, user_message)
 
 
 def parse_llm_goal_response(llm_response: str):

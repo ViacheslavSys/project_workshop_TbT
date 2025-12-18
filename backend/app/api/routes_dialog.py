@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from app.core.redis_cache import cache
 from app.schemas.chat import ChatResponse
 from app.schemas.risk_profile import LLMGoalData
-from app.services.llm_service import send_to_llm
+from app.services.llm_service import send_to_llm_async
 from app.services.whisper_processor import whisper_processor
 
 router = APIRouter(prefix="/dialog", tags=["dialog"])
@@ -49,7 +49,7 @@ async def dialog_chat(
             )
 
         print("Отправка в LLM")
-        llm_response_text, extracted_json = send_to_llm(user_id, user_message)
+        llm_response_text, extracted_json = await send_to_llm_async(user_id, user_message)
         print(f"ответ от LLM {llm_response_text}")
         print(f"JSON данные {extracted_json}")
 
