@@ -20,7 +20,7 @@ def _get_api_keys():
     keys = []
     i = 1
     while True:
-        key_name = f"OPENROUTER_API_KEY_{i}" if i > 1 else "OPENROUTER_API_KEY"
+        key_name = f"OPENROUTER_API_KEY_{i}"
         key_value = os.environ.get(key_name)
         if key_value:
             keys.append(key_value)
