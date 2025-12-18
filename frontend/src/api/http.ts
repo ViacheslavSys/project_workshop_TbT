@@ -11,17 +11,28 @@ export class ApiError extends Error {
 }
 
 export const API_BASE = (() => {
-  const configured = (import.meta as any)?.env?.VITE_API_URL;
+  const env = (import.meta as any)?.env ?? {};
+  const configured = env.VITE_API_URL || env.VITE_API_BASE_URL;
+  const basePath = env.VITE_API_PATH || "/api";
+
+  const normalize = (value: string) => String(value).replace(/\/+$/, "");
+  const asPath = (value: string) => (value.startsWith("/") ? value : `/${value}`);
+
   if (configured) {
-    return String(configured).replace(/\/+$/, "");
+    return normalize(configured);
   }
+
+  const path = normalize(asPath(basePath || "/api"));
+
   if (import.meta.env?.DEV) {
-    return "/api";
+    return path;
   }
+
   if (typeof window !== "undefined") {
-    return window.location.origin;
+    return `${window.location.origin}${path}`;
   }
-  return "";
+
+  return path;
 })();
 
 export function buildUrl(

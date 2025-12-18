@@ -7,12 +7,13 @@ from app.api.routes_health import router as health_router
 from app.api.routes_portfolios import router as portfolios_router
 from app.api.routes_risk_profile import router as risk_profile_router
 from app.api.routes_user import router as user_router
+from app.core.config import settings
 
 app = FastAPI(title="InvestPro", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=settings.ALLOWED_ORIGINS or ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

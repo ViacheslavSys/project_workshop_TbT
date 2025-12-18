@@ -10,6 +10,7 @@ import PortfolioAssetsTable, {
 } from "../components/PortfolioAssetsTable";
 import MLReport from "../components/MLReport";
 import { useAppSelector } from "../store/hooks";
+import { safeRandomUUID } from "../utils/uuid";
 
 type LocationState = {
   portfolio?: PortfolioRecommendation | null;
@@ -133,10 +134,7 @@ const buildMonthlyContributionICS = (
     "Создано в TBT портфолио",
   ].join(" · ");
 
-  const uid =
-    typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `tbt-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+  const uid = safeRandomUUID("tbt");
 
   return [
     "BEGIN:VCALENDAR",
@@ -1155,5 +1153,3 @@ function MonthlyPurchasePlanTable({ rows }: { rows: MonthlyPurchasePlanRow[] }) 
     </div>
   );
 }
-
-

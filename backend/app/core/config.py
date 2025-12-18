@@ -23,6 +23,14 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
     )
+    ALLOWED_ORIGINS = [
+        origin.strip().rstrip("/")
+        for origin in os.getenv(
+            "ALLOWED_ORIGINS",
+            "http://localhost:5173,http://127.0.0.1:5173,http://176.109.104.246,http://176.109.104.246:80",
+        ).split(",")
+        if origin.strip()
+    ]
 
 
 settings = Settings()

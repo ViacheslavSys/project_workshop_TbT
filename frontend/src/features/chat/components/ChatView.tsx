@@ -4,6 +4,7 @@ import { pushMessage, setTyping } from "../store/chatSlice";
 import type { ChatMessage } from "../store/chatSlice";
 import { getCanonicalUserId } from "../../../shared/userIdentity";
 import { sendChatMessage } from "../api/chatApi";
+import { safeRandomUUID } from "../../../utils/uuid";
 
 export default function ChatView() {
   const messages = useAppSelector((s) => s.chat.messages) as ChatMessage[];
@@ -26,12 +27,12 @@ export default function ChatView() {
     if (!text) return;
     setError(null);
     setInput("");
-    const userMsg = { id: crypto.randomUUID(), type: "message", content: text, sender: "user" as const, ts: Date.now() };
+    const userMsg = { id: safeRandomUUID(), type: "message", content: text, sender: "user" as const, ts: Date.now() };
     dispatch(pushMessage(userMsg));
     dispatch(setTyping(true));
     try {
       const reply = await sendChatMessage(userId, text);
-      const aiMsg = { id: crypto.randomUUID(), type: "message", content: reply, sender: "ai" as const, ts: Date.now() };
+      const aiMsg = { id: safeRandomUUID(), type: "message", content: reply, sender: "ai" as const, ts: Date.now() };
       dispatch(pushMessage(aiMsg));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ошибка запроса";
