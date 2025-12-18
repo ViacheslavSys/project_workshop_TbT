@@ -30,6 +30,7 @@ import {
   setStage,
   setTyping,
 } from "../../store/chatSlice";
+import { safeRandomUUID } from "../../utils/uuid";
 
 
 type MessageSender = "user" | "ai";
@@ -319,7 +320,7 @@ export default function ChatWide() {
     (sender: MessageSender, type: string, content: unknown) => {
       dispatch(
         pushMessage({
-          id: crypto.randomUUID(),
+          id: safeRandomUUID(),
           sender,
           type,
           content,

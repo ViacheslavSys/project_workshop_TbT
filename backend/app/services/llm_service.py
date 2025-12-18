@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import asyncio
 from typing import Dict, Optional, Tuple
 
 import dotenv
@@ -19,8 +20,11 @@ def _get_api_keys():
     keys = []
     i = 1
     while True:
-        key_name = f"OPENROUTER_API_KEY_{i}" if i > 1 else "OPENROUTER_API_KEY"
-        key_value = os.environ.get(key_name)
+        # First key can be stored as OPENROUTER_API_KEY (or _1 for legacy naming)
+        key_name = "OPENROUTER_API_KEY" if i == 1 else f"OPENROUTER_API_KEY_{i}"
+        key_value = os.environ.get(key_name) or (
+            os.environ.get("OPENROUTER_API_KEY_1") if i == 1 else None
+        )
         if key_value:
             keys.append(key_value)
             i += 1
@@ -170,6 +174,15 @@ def send_to_llm(user_id: str, user_message: str) -> Tuple[str, Optional[Dict]]:
                 raise e
 
     raise Exception(f"Failed after {max_retries} attempts")
+
+
+async def send_to_llm_async(user_id: str, user_message: str) -> Tuple[str, Optional[Dict]]:
+    """
+    Async-friendly wrapper that runs the blocking OpenAI client in a thread
+    to avoid blocking the event loop while waiting for LLM responses.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, send_to_llm, user_id, user_message)
 
 
 def parse_llm_goal_response(llm_response: str):
