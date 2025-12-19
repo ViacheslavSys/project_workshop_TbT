@@ -102,7 +102,7 @@ export default function Layout({ children }: PropsWithChildren) {
                 )}
                 <span className="hidden sm:inline">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
               </button>
-              <div className="hidden text-xs text-muted sm:block">v0.2</div>
+              <div className="hidden text-xs text-muted sm:block">v1.0</div>
             </div>
           </div>
         </header>
